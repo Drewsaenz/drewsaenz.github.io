@@ -1,0 +1,18 @@
+{
+  "model_version": "v1-blend",
+  "fitted_at": null,
+  "fit_seasons": [2021, 2022, 2023, 2024, 2025],
+  "constants": {
+    "home_field_points": 2.5,
+    "vegas_std_dev": 13.5,
+    "clamp": [0.02, 0.98],
+    "min_sources": 2
+  },
+  "sources": {
+    "sp":  { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
+    "fpi": { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
+    "fei": { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
+    "elo": { "points_scale": false, "a": 0, "b": 0.00576, "c": 0.3, "n": 0 }
+  },
+  "_note": "Placeholder coefficients from textbook scales (points: Phi(d/13.5); Elo: 10^(d/400)). The snapshot job refuses to run until `npm run fit` sets fitted_at. Any later change to coefficients, inputs or sources requires a new model_version."
+}

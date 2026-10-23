@@ -1,0 +1,7 @@
+{
+  "base_url": "https://api.collegefootballdata.com",
+  "season_type": "regular",
+  "use_fpi": true,
+  "line_provider_priority": ["consensus", "Bovada", "DraftKings", "ESPN Bet", "Caesars"],
+  "cache_ttl_hours": { "games": 1, "lines": 1, "ratings": 24, "historical": 8760 }
+}

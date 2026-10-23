@@ -1,0 +1,6 @@
+{
+  "season_url": "https://www.bcftoys.com/{season}-fei/",
+  "robots_url": "https://www.bcftoys.com/robots.txt",
+  "request_delay_ms": 2000,
+  "_note": "Verify season_url on first run; the page layout and URL are not under our control. FEI numbers stay local (data/cache) and are never redistributed."
+}

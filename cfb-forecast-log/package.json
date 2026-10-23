@@ -1,0 +1,32 @@
+{
+  "name": "cfb-forecast-log",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Logs college football win-probability forecasts next to Kalshi and Vegas prices, then scores them. No trading.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "ratings": "tsx src/jobs/ratings.ts",
+    "snapshot:tuesday": "tsx src/jobs/snapshot.ts tuesday",
+    "snapshot:pregame": "tsx src/jobs/snapshot.ts pregame",
+    "snapshot:manual": "tsx src/jobs/snapshot.ts manual",
+    "resolve": "tsx src/jobs/resolve.ts",
+    "report": "tsx src/jobs/report.ts",
+    "fit": "tsx scripts/fit.ts",
+    "scheduler": "tsx src/scheduler.ts",
+    "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "cheerio": "^1.1.2",
+    "node-cron": "^4.2.1",
+    "tsx": "^4.20.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.9.1",
+    "typescript": "^5.9.3"
+  }
+}

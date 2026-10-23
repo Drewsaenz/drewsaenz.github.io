@@ -1,0 +1,44 @@
+{
+  "markets": [
+    {
+      "ticker": "KXNCAAFGAME-25OCT25TEXOU-TEX",
+      "event_ticker": "KXNCAAFGAME-25OCT25TEXOU",
+      "title": "Texas vs Oklahoma Winner?",
+      "yes_sub_title": "Texas",
+      "no_sub_title": "Oklahoma",
+      "status": "open",
+      "yes_bid": 44,
+      "yes_ask": 47,
+      "volume": 12345,
+      "open_interest": 6789,
+      "close_time": "2025-10-25T23:00:00Z"
+    },
+    {
+      "ticker": "KXNCAAFGAME-25OCT25TEXOU-OU",
+      "event_ticker": "KXNCAAFGAME-25OCT25TEXOU",
+      "title": "Texas vs Oklahoma Winner?",
+      "yes_sub_title": "Oklahoma",
+      "no_sub_title": "Texas",
+      "status": "open",
+      "yes_bid": 53,
+      "yes_ask": 56,
+      "volume": 12345,
+      "open_interest": 6789,
+      "close_time": "2025-10-25T23:00:00Z"
+    },
+    {
+      "ticker": "KXNCAAFGAME-25OCT25MIAFLSMU-MIA",
+      "event_ticker": "KXNCAAFGAME-25OCT25MIAFLSMU",
+      "title": "Miami (FL) vs SMU Winner?",
+      "yes_sub_title": "Miami (FL)",
+      "no_sub_title": "SMU",
+      "status": "open",
+      "yes_bid": 70,
+      "yes_ask": 72,
+      "volume": 500,
+      "open_interest": 300,
+      "close_time": "2025-10-26T02:00:00Z"
+    }
+  ],
+  "cursor": ""
+}

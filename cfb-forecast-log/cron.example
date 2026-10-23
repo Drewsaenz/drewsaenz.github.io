@@ -1,0 +1,10 @@
+# Plain-cron alternative to `npm run scheduler`. Times are America/Chicago.
+# Install with: crontab cron.example   (after editing the path below)
+CRON_TZ=America/Chicago
+TZ=America/Chicago
+PROJECT=/path/to/cfb-forecast-log
+0  6  * * 2        cd $PROJECT && npm run -s ratings           >> data/jobs.log 2>&1
+0  7  * * 2        cd $PROJECT && npm run -s snapshot:tuesday  >> data/jobs.log 2>&1
+*/30 * * * 4,5,6   cd $PROJECT && npm run -s snapshot:pregame  >> data/jobs.log 2>&1
+0  6  * * 0,1      cd $PROJECT && npm run -s resolve           >> data/jobs.log 2>&1
+30 6  * * 1        cd $PROJECT && npm run -s report            >> data/jobs.log 2>&1
