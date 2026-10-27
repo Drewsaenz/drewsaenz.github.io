@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { loadKalshiConfig, writeConfig, type KalshiConfig } from '../config';
 import { log } from '../log';
-import { suggestTeams } from '../teams';
+import { resolveTeam, suggestTeams } from '../teams';
 import type { GameRow } from '../types';
 import { getJson } from '../util/http';
 
@@ -124,7 +124,7 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
       problems.push(`${m.ticker}: no yes_sub_title`);
       continue;
     }
-    const team = aliases[rawTeam] ?? rawTeam;
+    const team = resolveTeam(rawTeam, aliases);
     const anchor = tickerDate(m.ticker) ?? (m.close_time ? new Date(m.close_time) : null);
     if (!anchor) {
       problems.push(`${m.ticker}: no date in ticker or close_time`);

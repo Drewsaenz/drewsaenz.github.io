@@ -19,3 +19,16 @@ test('mapTeams reports every problem at once, distinguishing bad aliases from mi
   assert.match(res.problems[1], /aliased to "Louisiana Monroe", which is not a CFBD team.*"UL Monroe"/);
   assert.match(res.problems[2], /has no alias.*"Southern Miss"/);
 });
+
+test('expandStateAbbrev expands Kalshi "St." but leaves Saint alone', () => {
+  const { expandStateAbbrev, resolveTeam } = require('../src/teams');
+  assert.equal(expandStateAbbrev('Boise St.'), 'Boise State');
+  assert.equal(expandStateAbbrev('Southeast Missouri St.'), 'Southeast Missouri State');
+  assert.equal(expandStateAbbrev('St. Thomas'), 'St. Thomas');
+  assert.equal(expandStateAbbrev('Texas'), 'Texas');
+  const aliases = { 'San Jose State': 'San José State', 'NC St.': 'NC State', 'St. Thomas': 'St. Thomas (MN)' };
+  assert.equal(resolveTeam('San Jose St.', aliases), 'San José State'); // alias of expanded form
+  assert.equal(resolveTeam('NC St.', aliases), 'NC State'); // exact alias
+  assert.equal(resolveTeam('St. Thomas', aliases), 'St. Thomas (MN)');
+  assert.equal(resolveTeam('Ohio St.', aliases), 'Ohio State'); // expansion only
+});
