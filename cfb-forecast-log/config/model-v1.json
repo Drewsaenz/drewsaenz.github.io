@@ -1,18 +1,70 @@
 {
   "model_version": "v1-blend",
-  "fitted_at": null,
-  "fit_seasons": [2021, 2022, 2023, 2024, 2025],
+  "fitted_at": "2026-10-27T18:20:57.248Z",
+  "fit_seasons": [
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
   "constants": {
     "home_field_points": 2.5,
     "vegas_std_dev": 13.5,
-    "clamp": [0.02, 0.98],
+    "clamp": [
+      0.02,
+      0.98
+    ],
     "min_sources": 2
   },
   "sources": {
-    "sp":  { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
-    "fpi": { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
-    "fei": { "points_scale": false, "a": 0, "b": 3.0, "c": 0.3, "n": 0 },
-    "elo": { "points_scale": false, "a": 0, "b": 0.00576, "c": 0.3, "n": 0 }
+    "sp": {
+      "points_scale": true,
+      "a": -0.02508105647459152,
+      "b": 0.1259982135833698,
+      "c": 0.06838068347996393,
+      "n": 3730
+    },
+    "fpi": {
+      "points_scale": true,
+      "a": -0.027281836050770277,
+      "b": 0.15609679653515354,
+      "c": -0.03011025828748334,
+      "n": 3730
+    },
+    "fei": {
+      "points_scale": false,
+      "a": -0.021623662095467688,
+      "b": 2.977416585619894,
+      "c": 0.365292721176656,
+      "n": 3730
+    },
+    "elo": {
+      "points_scale": false,
+      "a": -0.006161345817871524,
+      "b": 0.004240184876044575,
+      "c": 0.3358292553187651,
+      "n": 3461
+    }
   },
-  "_note": "Placeholder coefficients from textbook scales (points: Phi(d/13.5); Elo: 10^(d/400)). FEI is on its own ~±1.5 scale, so it is not points_scale and its home effect lives entirely in c. The snapshot job refuses to run until `npm run fit` sets fitted_at. Any later change to coefficients, inputs or sources requires a new model_version."
+  "_note": "Placeholder coefficients from textbook scales (points: Phi(d/13.5); Elo: 10^(d/400)). FEI is on its own ~±1.5 scale, so it is not points_scale and its home effect lives entirely in c. The snapshot job refuses to run until `npm run fit` sets fitted_at. Any later change to coefficients, inputs or sources requires a new model_version.",
+  "fit_summary": {
+    "sp": {
+      "n": 3730,
+      "log_loss": 0.44819750228275834
+    },
+    "elo": {
+      "n": 3461,
+      "log_loss": 0.5560969230965543
+    },
+    "fpi": {
+      "n": 3730,
+      "log_loss": 0.44554404311362955
+    },
+    "fei": {
+      "n": 3730,
+      "log_loss": 0.4381379423518418
+    },
+    "note": "sp/fpi/fei use season-final ratings (in-sample for those seasons); elo uses prior-week ratings."
+  }
 }
