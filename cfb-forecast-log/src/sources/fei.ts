@@ -16,15 +16,18 @@ export interface FeiRating {
 /**
  * Parse the FEI ratings table out of a bcftoys page. Header-driven so column
  * order changes do not break it: needs a "Team" column and a "FEI" column;
- * "OFEI"/"DFEI" are optional.
+ * "OFEI"/"DFEI" are optional. Rows from every table on the page are merged,
+ * since the site may split the ratings across several tables.
  */
 export function parseFeiHtml(html: string): FeiRating[] {
   const $ = cheerio.load(html);
   const tables = $('table').toArray();
+  const seen = new Map<string, FeiRating>();
+  const perTable: number[] = [];
   for (const table of tables) {
     const rows = $(table).find('tr').toArray();
     let cols: { team: number; fei: number; ofei: number | null; dfei: number | null } | null = null;
-    const out: FeiRating[] = [];
+    let found = 0;
     for (const tr of rows) {
       const cells = $(tr)
         .find('th,td')
@@ -45,16 +48,22 @@ export function parseFeiHtml(html: string): FeiRating[] {
       const team = cells[cols.team];
       const fei = parseNum(cells[cols.fei]);
       if (!team || fei === null) continue;
-      out.push({
+      found += 1;
+      if (seen.has(team)) continue; // same team listed in more than one table: keep the first
+      seen.set(team, {
         team,
         fei,
         ofei: cols.ofei !== null ? parseNum(cells[cols.ofei]) : null,
         dfei: cols.dfei !== null ? parseNum(cells[cols.dfei]) : null,
       });
     }
-    if (out.length > 0) return out;
+    perTable.push(found);
   }
-  throw new Error('FEI: no ratings table found on page (layout changed?)');
+  if (process.env.FEI_DEBUG) {
+    log.info(`FEI_DEBUG: ${tables.length} table(s); rows with Team+FEI per table: [${perTable.join(', ')}]; unique teams: ${seen.size}`);
+  }
+  if (seen.size === 0) throw new Error('FEI: no ratings table found on page (layout changed?)');
+  return [...seen.values()];
 }
 
 function parseNum(s: string | undefined): number | null {
@@ -139,7 +148,9 @@ export class FeiClient {
       await this.assertAllowed(url);
       html = await this.politeGet(url);
       const parsed = parseFeiHtml(html); // validate before caching so a bad page is retried
-      if (parsed.length < 100) throw new Error(`FEI: only ${parsed.length} teams parsed; expected ~130 FBS teams`);
+      if (parsed.length < 100) {
+        throw new Error(`FEI: only ${parsed.length} teams parsed; expected ~130 FBS teams (re-run with FEI_DEBUG=1 for table counts)`);
+      }
       fs.writeFileSync(cacheFile, html);
     }
     return parseFeiHtml(html);

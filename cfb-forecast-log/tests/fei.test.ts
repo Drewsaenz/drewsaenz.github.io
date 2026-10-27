@@ -25,3 +25,10 @@ test('robotsDisallows', () => {
   assert.equal(robotsDisallows(robots, 'badbot/1.0', '/2025-fei/'), true);
   assert.equal(robotsDisallows('', 'x', '/anything'), false);
 });
+
+test('parseFeiHtml merges several tables and dedupes teams', () => {
+  const t = (rows: string) => `<table><tr><th>Rk</th><th>Team</th><th>FEI</th></tr>${rows}</table>`;
+  const html = t('<tr><td>1</td><td>A</td><td>1.0</td></tr><tr><td>2</td><td>B</td><td>0.5</td></tr>') + '<p>x</p>' + t('<tr><td>3</td><td>C</td><td>0.1</td></tr><tr><td>1</td><td>A</td><td>9.9</td></tr>');
+  const rows = parseFeiHtml(html);
+  assert.deepEqual(rows.map((r) => [r.team, r.fei]), [['A', 1.0], ['B', 0.5], ['C', 0.1]]);
+});
