@@ -61,3 +61,20 @@ export function mapTeams<T>(rows: T[], nameOf: (r: T) => string, aliases: Record
   }
   return { mapped, problems };
 }
+
+/**
+ * Kalshi abbreviates "State" as "St." ("Boise St.", "Southeast Missouri St.")
+ * while CFBD spells it out. Expand it, but only when it follows another word so
+ * that "St. Thomas" (Saint) is left alone.
+ */
+export function expandStateAbbrev(name: string): string {
+  return name.replace(/(?<=\S) St\.(?=\s|$)/g, ' State');
+}
+
+/** Alias lookup for a source name: exact alias, then alias of the expanded form, then the expanded form itself. */
+export function resolveTeam(raw: string, aliases: Record<string, string>): string {
+  if (aliases[raw] !== undefined) return aliases[raw];
+  const expanded = expandStateAbbrev(raw);
+  if (aliases[expanded] !== undefined) return aliases[expanded];
+  return expanded;
+}

@@ -1,5 +1,5 @@
 {
-  "_note": "Maps source team names to CFBD canonical names. A name that already matches CFBD needs no entry. Jobs fail on any unmapped name and print the closest CFBD names; add entries here and re-run.",
+  "_note": "Maps source team names to CFBD canonical names. A name that already matches CFBD needs no entry. Kalshi's 'St.' is expanded to 'State' automatically before lookup. Jobs fail on any unmapped name and print the closest CFBD names; add entries here and re-run.",
   "fei": {
     "Miami-FL": "Miami",
     "Miami-OH": "Miami (OH)",
@@ -19,9 +19,20 @@
     "Appalachian State": "App State",
     "Louisiana-Monroe": "UL Monroe",
     "Louisiana-Lafayette": "Louisiana",
-    "UTSA": "UT San Antonio",
     "Sam Houston State": "Sam Houston",
     "Connecticut": "UConn",
-    "Southern Mississippi": "Southern Miss"
+    "Southern Mississippi": "Southern Miss",
+    "UMass": "Massachusetts",
+    "Penn": "Pennsylvania",
+    "NC St.": "NC State",
+    "University at Albany": "UAlbany",
+    "St. Thomas": "St. Thomas (MN)",
+    "LIU": "Long Island University",
+    "Tennessee-Martin": "UT Martin",
+    "Southern University": "Southern",
+    "Southeastern Louisiana": "SE Louisiana",
+    "Nicholls State": "Nicholls",
+    "Grambling State": "Grambling",
+    "Central Connecticut State": "Central Connecticut"
   }
 }
