@@ -11,8 +11,8 @@
   "sources": {
     "sp":  { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
     "fpi": { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
-    "fei": { "points_scale": true,  "a": 0, "b": 0.126, "c": 0, "n": 0 },
+    "fei": { "points_scale": false, "a": 0, "b": 3.0, "c": 0.3, "n": 0 },
     "elo": { "points_scale": false, "a": 0, "b": 0.00576, "c": 0.3, "n": 0 }
   },
-  "_note": "Placeholder coefficients from textbook scales (points: Phi(d/13.5); Elo: 10^(d/400)). The snapshot job refuses to run until `npm run fit` sets fitted_at. Any later change to coefficients, inputs or sources requires a new model_version."
+  "_note": "Placeholder coefficients from textbook scales (points: Phi(d/13.5); Elo: 10^(d/400)). FEI is on its own ~±1.5 scale, so it is not points_scale and its home effect lives entirely in c. The snapshot job refuses to run until `npm run fit` sets fitted_at. Any later change to coefficients, inputs or sources requires a new model_version."
 }
