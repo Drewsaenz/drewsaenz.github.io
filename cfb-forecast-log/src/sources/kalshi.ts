@@ -19,6 +19,8 @@ const KalshiMarket = z
     status: z.string(),
     yes_bid: z.number().nullable().optional(),
     yes_ask: z.number().nullable().optional(),
+    yes_bid_dollars: z.union([z.string(), z.number()]).nullable().optional(),
+    yes_ask_dollars: z.union([z.string(), z.number()]).nullable().optional(),
     volume: z.number().nullable().optional(),
     open_interest: z.number().nullable().optional(),
     close_time: z.string().optional(),
@@ -80,6 +82,21 @@ export class KalshiClient {
   async getMarket(ticker: string): Promise<KalshiMarket> {
     return MarketResponse.parse(await this.get(`/markets/${ticker}`)).market;
   }
+}
+
+/**
+ * Best-effort price in cents. Kalshi's integer `yes_bid`/`yes_ask` cent fields
+ * are being superseded by `yes_bid_dollars`/`yes_ask_dollars` (strings like
+ * "0.4400"); prefer the cent field when it is a positive integer, else convert
+ * the dollar field. Null when neither carries a usable quote.
+ */
+export function priceCents(cents: number | null | undefined, dollars: string | number | null | undefined): number | null {
+  if (typeof cents === 'number' && Number.isInteger(cents) && cents > 0) return cents;
+  if (dollars !== null && dollars !== undefined && dollars !== '') {
+    const d = Number(dollars);
+    if (Number.isFinite(d) && d > 0) return Math.round(d * 100);
+  }
+  return null;
 }
 
 const MONTHS: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
@@ -153,8 +170,8 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
       ticker: m.ticker,
       game: candidates[0],
       yes_team: team,
-      yes_bid: m.yes_bid ?? null,
-      yes_ask: m.yes_ask ?? null,
+      yes_bid: priceCents(m.yes_bid, m.yes_bid_dollars),
+      yes_ask: priceCents(m.yes_ask, m.yes_ask_dollars),
       volume: m.volume ?? null,
       open_interest: m.open_interest ?? null,
       close_utc: m.close_time ? new Date(m.close_time).toISOString() : null,

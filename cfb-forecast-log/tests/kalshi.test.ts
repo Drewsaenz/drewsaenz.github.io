@@ -45,3 +45,21 @@ test('v1 has no code path that could place an order', () => {
   assert.ok(!/method:\s*['"](POST|PUT|DELETE|PATCH)['"]/.test(http));
   assert.ok(/method:\s*'GET'/.test(http));
 });
+
+test('priceCents prefers integer cents, falls back to dollar strings, null when unquoted', () => {
+  const { priceCents } = require('../src/sources/kalshi');
+  assert.equal(priceCents(44, '0.4400'), 44);
+  assert.equal(priceCents(0, '0.4400'), 44);
+  assert.equal(priceCents(undefined, '0.47'), 47);
+  assert.equal(priceCents(null, 0.56), 56);
+  assert.equal(priceCents(0, '0'), null);
+  assert.equal(priceCents(undefined, undefined), null);
+});
+
+test('mapMarketsToGames reads dollar price fields when cent fields are absent', () => {
+  const games = [game({ game_id: 1, home_team: 'Oklahoma', away_team: 'Texas', kickoff_utc: '2025-10-25T19:30:00Z' })];
+  const m = { ...fixture.markets[0], yes_bid: undefined, yes_ask: undefined, yes_bid_dollars: '0.4400', yes_ask_dollars: '0.4700' } as unknown as KalshiMarket;
+  const [mapped] = mapMarketsToGames([m], games, {});
+  assert.equal(mapped.yes_bid, 44);
+  assert.equal(mapped.yes_ask, 47);
+});

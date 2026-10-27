@@ -88,6 +88,14 @@ runJob(`snapshot:${kind}`, async () => {
     );
   }
 
+  // A market snapshot without market prices is useless for scoring. If most
+  // selected markets came back unquoted, the Kalshi response shape has
+  // probably changed: fail loud rather than log rows with no comparison.
+  const quoted = rows.filter((r) => r.market_mid !== null).length;
+  if (rows.length > 0 && quoted * 2 < rows.length) {
+    throw new Error(`only ${quoted} of ${rows.length} markets have a Kalshi bid/ask; refusing to write a snapshot without market prices`);
+  }
+
   const insert = db.prepare(`
     INSERT ${kind === 'manual' ? '' : 'OR IGNORE'} INTO forecasts
       (game_id, ticker, snapshot_kind, snapshot_utc, model_version, my_prob, yes_bid, yes_ask, market_mid, vegas_spread, vegas_prob)
