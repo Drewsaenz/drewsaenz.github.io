@@ -8,6 +8,7 @@ import { openDb, upsertGames, upsertRatings, type RatingRow } from '../db';
 import { requireEnv } from '../env';
 import { log, runJob } from '../log';
 import { FeiClient } from '../sources/fei';
+import { mapTeams } from '../teams';
 import { seasonContext } from './context';
 
 runJob('ratings', async () => {
@@ -41,19 +42,9 @@ runJob('ratings', async () => {
 
   // --- FEI (scraped, cached once per day) ---------------------------------
   const fei = new FeiClient(requireEnv('FEI_USER_AGENT'));
-  const feiRows = await fei.ratings(season);
-  const unmapped: string[] = [];
-  for (const r of feiRows) {
-    const team = aliases.fei[r.team] ?? r.team;
-    if (!fbsTeams.has(team)) {
-      unmapped.push(`"${r.team}"${team !== r.team ? ` -> "${team}"` : ''}`);
-      continue;
-    }
-    add('fei', team, r.fei, { ofei: r.ofei, dfei: r.dfei });
-  }
-  if (unmapped.length > 0) {
-    throw new Error(`FEI: ${unmapped.length} team name(s) not in CFBD schedule; add to config/team-aliases.json: ${unmapped.join(', ')}`);
-  }
+  const feiMapping = mapTeams(await fei.ratings(season), (r) => r.team, aliases.fei, fbsTeams, `FEI ${season}`);
+  if (feiMapping.problems.length > 0) throw new Error(feiMapping.problems.join('\n  '));
+  for (const { row, team } of feiMapping.mapped) add('fei', team, row.fei, { ofei: row.ofei, dfei: row.dfei });
 
   // --- validate counts before touching the DB -----------------------------
   const counts = new Map<string, number>();

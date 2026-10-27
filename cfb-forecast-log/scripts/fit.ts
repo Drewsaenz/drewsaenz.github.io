@@ -18,6 +18,7 @@ import { sourceFeature } from '../src/model/v1';
 import { seasonFor } from '../src/season';
 import { CfbdClient } from '../src/sources/cfbd';
 import { FeiClient } from '../src/sources/fei';
+import { mapTeams } from '../src/teams';
 import { SOURCES, type Source } from '../src/types';
 
 runJob('fit', async () => {
@@ -52,11 +53,9 @@ runJob('fit', async () => {
     bySource.set('sp', await cfbd.sp(season, historical));
     bySource.set('fpi', await cfbd.fpi(season, historical));
     const feiMap = new Map<string, number>();
-    for (const r of await fei.ratings(season, { historical: true })) {
-      const team = aliases.fei[r.team] ?? r.team;
-      if (!fbs.has(team)) throw new Error(`FEI ${season}: unmapped team "${r.team}"; add to config/team-aliases.json`);
-      feiMap.set(team, r.fei);
-    }
+    const feiMapping = mapTeams(await fei.ratings(season, { historical: true }), (r) => r.team, aliases.fei, fbs, `FEI ${season}`);
+    if (feiMapping.problems.length > 0) throw new Error(feiMapping.problems.join('\n  '));
+    for (const { row, team } of feiMapping.mapped) feiMap.set(team, row.fei);
     bySource.set('fei', feiMap);
 
     const eloByWeek = new Map<number, Map<string, number>>();

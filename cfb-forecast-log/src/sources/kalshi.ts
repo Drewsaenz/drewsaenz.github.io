@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { loadKalshiConfig, writeConfig, type KalshiConfig } from '../config';
 import { log } from '../log';
+import { suggestTeams } from '../teams';
 import type { GameRow } from '../types';
 import { getJson } from '../util/http';
 
@@ -133,10 +134,19 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
       (g) => (g.home_team === team || g.away_team === team) && Math.abs(Date.parse(g.kickoff_utc) - anchor.getTime()) <= WINDOW_MS,
     );
     if (candidates.length !== 1) {
-      problems.push(
-        `${m.ticker}: yes team "${rawTeam}" -> "${team}" matched ${candidates.length} CFBD games near ${anchor.toISOString().slice(0, 10)}` +
-          (candidates.length === 0 ? ' (add an alias in config/team-aliases.json?)' : ''),
-      );
+      let hint = '';
+      if (candidates.length === 0) {
+        const names = new Set<string>();
+        for (const g of games) {
+          names.add(g.home_team);
+          names.add(g.away_team);
+        }
+        const close = names.has(team) ? [] : suggestTeams(rawTeam, names);
+        hint = names.has(team)
+          ? ' (team name is fine; no CFBD game for it within 36h of that date)'
+          : ` (not a CFBD team name; add a "kalshi" alias in config/team-aliases.json${close.length ? `, closest: ${close.map((c) => `"${c}"`).join(', ')}` : ''})`;
+      }
+      problems.push(`${m.ticker}: yes team "${rawTeam}"${team !== rawTeam ? ` -> "${team}"` : ''} matched ${candidates.length} CFBD games near ${anchor.toISOString().slice(0, 10)}${hint}`);
       continue;
     }
     out.push({

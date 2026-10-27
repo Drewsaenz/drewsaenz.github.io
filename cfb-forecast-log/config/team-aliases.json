@@ -1,37 +1,23 @@
 {
-  "_note": "Maps source team names to CFBD canonical names. A name that already matches CFBD needs no entry. Jobs fail on any unmapped name; add it here and re-run.",
+  "_note": "Maps source team names to CFBD canonical names. A name that already matches CFBD needs no entry. Jobs fail on any unmapped name and print the closest CFBD names; add entries here and re-run.",
   "fei": {
     "Miami-FL": "Miami",
     "Miami-OH": "Miami (OH)",
-    "Southern Miss": "Southern Mississippi",
-    "UL Lafayette": "Louisiana",
-    "UL Monroe": "Louisiana Monroe",
     "Hawaii": "Hawai'i",
     "San Jose State": "San José State",
-    "UConn": "Connecticut",
-    "UMass": "Massachusetts",
     "Texas-San Antonio": "UT San Antonio",
     "Texas-El Paso": "UTEP",
-    "Middle Tennessee": "Middle Tennessee",
-    "Florida International": "Florida International",
     "Appalachian State": "App State",
     "Sam Houston State": "Sam Houston"
   },
   "kalshi": {
     "Miami (FL)": "Miami",
-    "Miami (OH)": "Miami (OH)",
-    "Ole Miss": "Ole Miss",
     "Hawaii": "Hawai'i",
     "San Jose State": "San José State",
-    "UConn": "Connecticut",
-    "UMass": "Massachusetts",
-    "Southern Miss": "Southern Mississippi",
     "Appalachian State": "App State",
-    "UL Monroe": "Louisiana Monroe",
-    "Louisiana-Monroe": "Louisiana Monroe",
+    "Louisiana-Monroe": "UL Monroe",
     "Louisiana-Lafayette": "Louisiana",
     "UTSA": "UT San Antonio",
-    "Sam Houston State": "Sam Houston",
-    "Texas A&M": "Texas A&M"
+    "Sam Houston State": "Sam Houston"
   }
 }

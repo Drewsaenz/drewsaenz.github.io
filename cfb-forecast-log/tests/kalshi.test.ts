@@ -33,7 +33,7 @@ test('mapMarketsToGames maps by yes team + date and applies aliases', () => {
 
 test('mapMarketsToGames fails loud on an unmapped market instead of guessing', () => {
   const games = [game({ game_id: 1, home_team: 'Oklahoma', away_team: 'Texas', kickoff_utc: '2025-10-25T19:30:00Z' })];
-  assert.throws(() => mapMarketsToGames(fixture.markets, games, {}), /Miami \(FL\).*matched 0/s);
+  assert.throws(() => mapMarketsToGames(fixture.markets, games, {}), /Miami \(FL\).*matched 0.*kalshi.*alias/s);
 });
 
 test('v1 has no code path that could place an order', () => {
