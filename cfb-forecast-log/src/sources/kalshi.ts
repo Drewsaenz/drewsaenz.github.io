@@ -23,6 +23,8 @@ const KalshiMarket = z
     yes_ask_dollars: z.union([z.string(), z.number()]).nullable().optional(),
     volume: z.number().nullable().optional(),
     open_interest: z.number().nullable().optional(),
+    volume_fp: z.union([z.string(), z.number()]).nullable().optional(),
+    open_interest_fp: z.union([z.string(), z.number()]).nullable().optional(),
     close_time: z.string().optional(),
     expected_expiration_time: z.string().optional(),
   })
@@ -99,6 +101,13 @@ export function priceCents(cents: number | null | undefined, dollars: string | n
   return null;
 }
 
+function numberOrNull(primary: number | null | undefined, fallback: string | number | null | undefined): number | null {
+  if (typeof primary === 'number' && Number.isFinite(primary)) return primary;
+  if (fallback === null || fallback === undefined || fallback === '') return null;
+  const n = Number(fallback);
+  return Number.isFinite(n) ? n : null;
+}
+
 const MONTHS: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
 
 /**
@@ -172,8 +181,8 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
       yes_team: team,
       yes_bid: priceCents(m.yes_bid, m.yes_bid_dollars),
       yes_ask: priceCents(m.yes_ask, m.yes_ask_dollars),
-      volume: m.volume ?? null,
-      open_interest: m.open_interest ?? null,
+      volume: numberOrNull(m.volume, m.volume_fp),
+      open_interest: numberOrNull(m.open_interest, m.open_interest_fp),
       close_utc: m.close_time ? new Date(m.close_time).toISOString() : null,
     });
   }
