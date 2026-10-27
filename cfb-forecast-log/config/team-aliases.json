@@ -8,7 +8,9 @@
     "Texas-San Antonio": "UT San Antonio",
     "Texas-El Paso": "UTEP",
     "Appalachian State": "App State",
-    "Sam Houston State": "Sam Houston"
+    "Sam Houston State": "Sam Houston",
+    "Southern Mississippi": "Southern Miss",
+    "Connecticut": "UConn"
   },
   "kalshi": {
     "Miami (FL)": "Miami",
@@ -18,6 +20,8 @@
     "Louisiana-Monroe": "UL Monroe",
     "Louisiana-Lafayette": "Louisiana",
     "UTSA": "UT San Antonio",
-    "Sam Houston State": "Sam Houston"
+    "Sam Houston State": "Sam Houston",
+    "Connecticut": "UConn",
+    "Southern Mississippi": "Southern Miss"
   }
 }
