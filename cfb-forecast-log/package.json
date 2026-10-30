@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Logs college football win-probability forecasts next to Kalshi and Vegas prices, then scores them. No trading.",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "ratings": "tsx src/jobs/ratings.ts",
     "snapshot:tuesday": "tsx src/jobs/snapshot.ts tuesday",
@@ -11,6 +13,7 @@
     "snapshot:manual": "tsx src/jobs/snapshot.ts manual",
     "resolve": "tsx src/jobs/resolve.ts",
     "report": "tsx src/jobs/report.ts",
+    "tracker": "tsx src/jobs/tracker.ts",
     "fit": "tsx scripts/fit.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",

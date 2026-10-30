@@ -11,3 +11,4 @@ PATH=/path/to/node/bin:/usr/bin:/bin
 */30 * * * 4,5,6   cd $PROJECT && npm run -s snapshot:pregame  >> data/jobs.log 2>&1
 0  6  * * 0,1      cd $PROJECT && npm run -s resolve           >> data/jobs.log 2>&1
 30 6  * * 1        cd $PROJECT && npm run -s report            >> data/jobs.log 2>&1
+*/15 * * * *       cd $PROJECT && npm run -s tracker          > /dev/null 2>&1

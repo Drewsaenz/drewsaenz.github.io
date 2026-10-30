@@ -26,6 +26,16 @@ npm run fit              # one-time: fits config/model-v1.json on 2021-2025 (~90
 Run them with `npm run scheduler` (node-cron) or install `cron.example`.
 `npm run snapshot:manual` writes rows that are excluded from scoring.
 
+## Progress tracker
+
+`npm run tracker` writes `reports/tracker.html`, a one-page view of where the
+current week stands: ratings, Tuesday predictions, pregame checks, grading and
+the report, plus season progress, last job runs, and warnings when a job fails
+or the Mac sleeps through a pregame window. It reads only the local database
+and `data/jobs.log`; it makes no network calls and writes nothing to the
+database. The cron file regenerates it every 15 minutes and the page reloads
+itself every 5. Open it with `open reports/tracker.html`.
+
 ## First-run checks
 
 - Kalshi: the series ticker in `config/kalshi.json` is verified against
