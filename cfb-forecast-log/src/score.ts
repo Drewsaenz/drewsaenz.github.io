@@ -107,37 +107,69 @@ export interface PnlReport {
  *   Maker: assume a fill at the bid (YES at yes_bid, NO at 100 - yes_ask), no fee.
  * Maker fills are not guaranteed, so maker P&L is an upper bound.
  */
+export interface RowTrade {
+  side: 'yes' | 'no';
+  won: boolean;
+  takerPrice: number; // dollars
+  takerFee: number; // dollars
+  takerPnl: number; // dollars, after fee
+  makerPrice: number; // dollars
+  makerPnl: number; // dollars
+}
+
+/**
+ * The hypothetical 1-contract trade for one row, or why there is none:
+ * 'noquote' when the row has no usable bid/ask, 'below' when the edge is
+ * under edge_min. Side = YES if my_prob > market_mid else NO.
+ *   Taker: pay the ask (YES at yes_ask, NO at 100 - yes_bid), pay the fee.
+ *   Maker: assume a fill at the bid (YES at yes_bid, NO at 100 - yes_ask), no fee.
+ */
+export function rowTrade(r: ScoreRow, cfg: ScoringConfig): RowTrade | 'noquote' | 'below' {
+  if (r.market_mid === null || r.yes_bid === null || r.yes_ask === null) return 'noquote';
+  const edge = r.my_prob - r.market_mid;
+  if (Math.abs(edge) < cfg.edge_min) return 'below';
+  const buyYes = edge > 0;
+  const won = buyYes ? r.outcome === 1 : r.outcome === 0;
+  const takerPrice = (buyYes ? r.yes_ask : 100 - r.yes_bid) / 100;
+  const makerPrice = (buyYes ? r.yes_bid : 100 - r.yes_ask) / 100;
+  if (takerPrice <= 0 || takerPrice >= 1 || makerPrice <= 0 || makerPrice >= 1) return 'noquote';
+  const fee = takerFee(takerPrice, cfg.taker_fee_rate);
+  return {
+    side: buyYes ? 'yes' : 'no',
+    won,
+    takerPrice,
+    takerFee: fee,
+    takerPnl: (won ? 1 - takerPrice : -takerPrice) - fee,
+    makerPrice,
+    makerPnl: won ? 1 - makerPrice : -makerPrice,
+  };
+}
+
+/**
+ * Hypothetical 1-contract P&L per row when |my_prob - market_mid| >= edge_min.
+ * Maker fills are not guaranteed, so maker P&L is an upper bound.
+ */
 export function hypotheticalPnl(rows: ScoreRow[], cfg: ScoringConfig): PnlReport {
   const taker: PnlSummary = { n: 0, pnl: 0, risked: 0, roi: null, wins: 0 };
   const maker: PnlSummary = { n: 0, pnl: 0, risked: 0, roi: null, wins: 0 };
   let skipped = 0;
   for (const r of rows) {
-    if (r.market_mid === null || r.yes_bid === null || r.yes_ask === null) {
+    const t = rowTrade(r, cfg);
+    if (t === 'noquote') {
       skipped += 1;
       continue;
     }
-    const edge = r.my_prob - r.market_mid;
-    if (Math.abs(edge) < cfg.edge_min) continue;
-    const buyYes = edge > 0;
-    const won = buyYes ? r.outcome === 1 : r.outcome === 0;
-
-    const takerPrice = (buyYes ? r.yes_ask : 100 - r.yes_bid) / 100;
-    const makerPrice = (buyYes ? r.yes_bid : 100 - r.yes_ask) / 100;
-    if (takerPrice <= 0 || takerPrice >= 1 || makerPrice <= 0 || makerPrice >= 1) {
-      skipped += 1;
-      continue;
-    }
-
-    const fee = takerFee(takerPrice, cfg.taker_fee_rate);
+    if (t === 'below') continue;
     taker.n += 1;
-    taker.risked += takerPrice + fee;
-    taker.pnl += (won ? 1 - takerPrice : -takerPrice) - fee;
-    if (won) taker.wins += 1;
-
+    taker.risked += t.takerPrice + t.takerFee;
+    taker.pnl += t.takerPnl;
     maker.n += 1;
-    maker.risked += makerPrice;
-    maker.pnl += won ? 1 - makerPrice : -makerPrice;
-    if (won) maker.wins += 1;
+    maker.risked += t.makerPrice;
+    maker.pnl += t.makerPnl;
+    if (t.won) {
+      taker.wins += 1;
+      maker.wins += 1;
+    }
   }
   taker.roi = taker.risked > 0 ? taker.pnl / taker.risked : null;
   maker.roi = maker.risked > 0 ? maker.pnl / maker.risked : null;

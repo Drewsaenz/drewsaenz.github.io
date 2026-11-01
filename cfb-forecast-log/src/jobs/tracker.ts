@@ -5,10 +5,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadScoringConfig } from '../config';
 import { openDb } from '../db';
 import { loadEnv } from '../env';
 import { runJob } from '../log';
 import { DATA_DIR, REPORTS_DIR } from '../paths';
+import { collectResults } from '../results';
 import { collectState, latestReport, renderTracker } from '../tracker';
 
 runJob('tracker', async () => {
@@ -19,6 +21,6 @@ runJob('tracker', async () => {
   const state = collectState(db, new Date(), logText, latestReport(REPORTS_DIR));
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
   const out = path.join(REPORTS_DIR, 'tracker.html');
-  fs.writeFileSync(out, renderTracker(state));
+  fs.writeFileSync(out, renderTracker(state, collectResults(db, loadScoringConfig())));
   console.log(`${state.headline}\nwrote ${out}`);
 });

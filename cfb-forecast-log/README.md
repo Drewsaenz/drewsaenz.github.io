@@ -31,7 +31,10 @@ Run them with `npm run scheduler` (node-cron) or install `cron.example`.
 `npm run tracker` writes `reports/tracker.html`, a one-page view of where the
 current week stands: ratings, Tuesday predictions, pregame checks, grading and
 the report, plus season progress, last job runs, and warnings when a job fails
-or the Mac sleeps through a pregame window. It reads only the local database
+or the Mac sleeps through a pregame window. Once games are graded it adds a
+results section: Brier tiles for the model, Kalshi and Vegas, accuracy by week,
+cumulative hypothetical profit, and a calibration chart, each with a table
+view. It reads only the local database
 and `data/jobs.log`; it makes no network calls and writes nothing to the
 database. The cron file regenerates it every 15 minutes and the page reloads
 itself every 5. Open it with `open reports/tracker.html`.
