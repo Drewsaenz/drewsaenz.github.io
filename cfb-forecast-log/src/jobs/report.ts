@@ -72,7 +72,8 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
     if (d.games > 0 && d.tuesday.mine.brier !== null && d.tuesday.market.brier !== null && d.pregame.mine.brier !== null && d.pregame.market.brier !== null) {
       const gapT = d.tuesday.mine.brier - d.tuesday.market.brier;
       const gapP = d.pregame.mine.brier - d.pregame.market.brier;
-      summaries.push(`${model}: the Brier gap vs market goes from ${gapT.toFixed(4)} on Tuesday to ${gapP.toFixed(4)} pregame (${Math.abs(gapP) < Math.abs(gapT) ? 'shrinking' : 'not shrinking'}) over ${d.games} games.`);
+      const side = (g: number) => (g < 0 ? `the model beat the market by ${Math.abs(g).toFixed(4)}` : `the market beat the model by ${g.toFixed(4)}`);
+      summaries.push(`${model}: on the ${d.games} games with both snapshots, ${side(gapT)} on Tuesday and ${side(gapP)} at kickoff (lower Brier wins).`);
     } else {
       summaries.push(`${model}: not enough games with both Tuesday and pregame rows to measure edge decay.`);
     }
