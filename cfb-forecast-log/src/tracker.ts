@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Db } from './db';
+import { BOARD_CSS, BOARD_JS, renderBoard, type BoardView } from './board';
 import { RESULTS_CSS, RESULTS_JS, renderResults, type ResultsView } from './results';
 
 const TZ = 'America/Chicago';
@@ -239,7 +240,7 @@ function baseStages(): Stage[] {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-export function renderTracker(s: TrackerState, results: ResultsView | null = null): string {
+export function renderTracker(s: TrackerState, results: ResultsView | null = null, board: BoardView | null = null): string {
   const icon: Record<StageStatus, string> = { done: '✓', active: '●', pending: '', failed: '!' };
   const word: Record<StageStatus, string> = { done: 'Done', active: 'In progress', pending: 'Up next', failed: 'Failed' };
   const stages = s.stages
@@ -294,6 +295,7 @@ ol{list-style:none;margin:0;padding:0}
 .small{font-size:13px;color:var(--muted)}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:500}td.bad{color:var(--bad);font-weight:600}
 ${RESULTS_CSS}
+${BOARD_CSS}
 </style></head>
 <body><main>
 <h1>${esc(title)}</h1>
@@ -306,6 +308,7 @@ ${warnings}
   <div class="pips">${pips}</div>
   <div class="small">${s.weeksScored} of ${SEASON_TARGET_WEEKS} weeks graded. Results start to mean something around week 6 to 8.</div>
 </section>
+${board && board.rows.length ? renderBoard(board, shortTime) : ''}
 ${results ? renderResults(results) : ''}
 <section class="card">
   <div class="label" style="margin-bottom:6px">Last job runs</div>
@@ -315,6 +318,7 @@ ${results ? renderResults(results) : ''}
 <div id="tip" role="tooltip"></div>
 <script>
 ${RESULTS_JS}
+${BOARD_JS}
 (function(){var el=document.getElementById('upd');var at=Date.parse(el.dataset.at);
 function tick(){var m=Math.round((Date.now()-at)/60000);el.textContent='Updated '+(m<1?'just now':m+' min ago');
 if(m>${STALE_PREGAME_MIN}){el.classList.add('stale');el.textContent+=' (stale: the Mac may be asleep or cron is off)';}}

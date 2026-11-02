@@ -10,17 +10,19 @@ import { openDb } from '../db';
 import { loadEnv } from '../env';
 import { runJob } from '../log';
 import { DATA_DIR, REPORTS_DIR } from '../paths';
+import { collectBoard } from '../board';
 import { collectResults } from '../results';
 import { collectState, latestReport, renderTracker } from '../tracker';
 
 runJob('tracker', async () => {
   loadEnv();
   const db = openDb();
+  const scoring = loadScoringConfig();
   const logFile = path.join(DATA_DIR, 'jobs.log');
   const logText = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : '';
   const state = collectState(db, new Date(), logText, latestReport(REPORTS_DIR));
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
   const out = path.join(REPORTS_DIR, 'tracker.html');
-  fs.writeFileSync(out, renderTracker(state, collectResults(db, loadScoringConfig())));
+  fs.writeFileSync(out, renderTracker(state, collectResults(db, scoring), collectBoard(db, scoring)));
   console.log(`${state.headline}\nwrote ${out}`);
 });
