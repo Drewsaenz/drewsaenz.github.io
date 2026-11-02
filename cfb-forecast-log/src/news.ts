@@ -73,6 +73,15 @@ export function parseTranscript(md: string, file = ''): Transcript {
     const text = m[2].replace(/^>>\s*/, '').replace(/\[(music|laughter|applause|snorts|clears throat)\]/gi, '').trim();
     if (text) lines.push({ t: toSeconds(m[1]), text });
   }
+  // Articles and forum posts have no timestamps: treat each non-empty line as a
+  // "line" with its paragraph index as the position, so windowing still works.
+  if (lines.length === 0) {
+    let i = 0;
+    for (const raw of body.split(/\r?\n/)) {
+      const text = raw.replace(/^#+\s*/, '').trim();
+      if (text) lines.push({ t: i++, text });
+    }
+  }
   // Prefer a real publish date if the scraper recorded one; fall back to the scrape time.
   const published = fm.published ?? fm.published_at ?? fm.upload_date ?? fm.date;
   let as_of = '';

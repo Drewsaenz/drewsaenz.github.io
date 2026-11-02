@@ -104,3 +104,14 @@ test('restampFacts moves facts to the publish date once the scraper backfills it
   assert.ok(alreadyProcessed(db, t.meta.url, sha1(md2))); // hash refreshed, no re-extraction
   assert.deepEqual(restampFacts(db, [file]), { transcripts: 0, moved: 0, unchanged: 1, noDate: 0 });
 });
+
+test('parseTranscript falls back to paragraphs for untimed articles', () => {
+  const article = `---\ntitle: "Hollywood Smothers Update"\nchannel: "On Texas Football"\nauthor: "Bobby Burton"\nurl: https://ontexasfootball.com/topic/1-x/\nsource: otf-forum\npublished: 2026-11-02T17:10:00.000Z\npublished_source: site\nsaved: 2026-11-02T18:00:00.000Z\ntimestamps: false\n---\n\n# Hollywood Smothers Update\n\n## Bobby Burton\n\nSmothers is expected to miss two to three weeks with the ankle injury, per a source.\n\nCoaches are hopeful for LSU.\n`;
+  const t = parseTranscript(article, 'a.md');
+  assert.equal(t.meta.as_of_source, 'published');
+  assert.equal(t.lines.length, 4);
+  assert.equal(t.lines[0].text, 'Hollywood Smothers Update');
+  const ws = relevantWindows(t.lines);
+  assert.equal(ws.length, 1);
+  assert.match(ws[0].text, /miss two to three weeks/);
+});
