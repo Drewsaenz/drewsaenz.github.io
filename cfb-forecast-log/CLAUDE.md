@@ -142,6 +142,23 @@ Vegas comparison: convert the closing spread to a probability with
 `sigmoid(spread / 7.0)` style normal approximation (`stdDev ≈ 13.5` points
 for CFB). Put the constant in config.
 
+## Model v2 (`src/model/v2.ts`, `model_version = 'v2-qb'`, approved by Drew 2026-11-02)
+
+v1-blend, then a fixed penalty when a team's starting QB is reported out or doubtful.
+Logged next to v1 at every snapshot (same market prices, its own rows), so the report
+scores the two side by side.
+
+- Starter = the team's season pass-attempt leader (CFBD `/stats/player/season`,
+  category passing), if he has >= 40% of the team's attempts. A backup being out does nothing.
+- Status = the latest `news_facts` QB fact naming him (name match tolerates transcript
+  misspellings), published at or before the snapshot, within 8 days (any time this season
+  if stated as season-ending), confidence >= 0.5. A later "available" clears it.
+- Shift = 6 points x status weight (out 1.0, doubtful 0.75), converted to logit with
+  0.14105/point (mean of v1's SP+ and FPI slopes). Constants in `config/model-v2.json`.
+- 6 points is a prior, not a fit. Changing it means a new `model_version`.
+- `npm run v2:check` previews this week's penalties; `npm run v2:backtest` re-scores
+  logged v1 rows as if v2 had run (rough: uses today's starters).
+
 ## Jobs (`npm run <name>`)
 
 | Job        | When (America/Chicago)          | Does |
@@ -227,8 +244,8 @@ TZ=America/Chicago
 - Adding a new rating source (needs a new `model_version`).
 - Anything touching Kalshi auth or order endpoints (answer is no in v1).
 
-## Transcripts (context only, not a model input)
+## Transcripts (context, and the only input to v2-qb)
 
-`data/transcripts/<collection>/*.md|*.txt` are YouTube transcripts (Texas football shows, pressers, film reviews) pushed from `~/Desktop/Home/TranscriptGPT`. The `.md` ones carry YAML frontmatter (title, channel, url, video_id, saved). They are gitignored with the rest of `data/`. Use them when Drew asks for qualitative context on a game or team (injuries, QB situation, coaching sentiment). They are NOT a rating source: do not wire them into `my_prob` or any `model_version` without asking (see "Things to ask Drew before doing").
+`data/transcripts/<collection>/*.md|*.txt` are YouTube transcripts (Texas football shows, pressers, film reviews) pushed from `~/Desktop/Home/TranscriptGPT`. The `.md` ones carry YAML frontmatter (title, channel, url, video_id, saved). They are gitignored with the rest of `data/`. Use them when Drew asks for qualitative context on a game or team (injuries, QB situation, coaching sentiment). They are not a rating source for v1. The only model that reads them is `v2-qb` (see Model v2 above), which Drew approved on 2026-11-02; wiring them into anything else still needs asking.
 
 Availability facts go in `news_facts` (see `src/news.ts`). Two ways to fill it: `npm run news:extract` calls the Claude API (needs a funded `ANTHROPIC_API_KEY` in `.env`), or the no-API path: `npm run news:windows` dumps the availability segments to `data/news-work/*.windows.json`, a Claude Code session writes the matching `*.facts.json` by hand, and `npm run news:import` stores them through the same code path. The scraper now writes `published:` (video publish time) next to `saved:`; `as_of` uses it when present and falls back to `saved`. After backfilling `published:` into older transcripts (`node backfill-published.js` in TranscriptGPT), run `npm run news:restamp` to move already-stored facts to their publish dates so the News check attaches them to the right game.

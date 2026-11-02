@@ -10,6 +10,7 @@ import { loadAliases, loadModelConfig } from '../config';
 import { openDb, loadRatings, upsertGames, upsertMarkets } from '../db';
 import { log, runJob } from '../log';
 import { assertFitted, homeIndicator, predictV1, vegasProb } from '../model/v1';
+import { adjustForQb, loadModelV2Config, starterStatus, startersFromAttempts } from '../model/v2';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
 import { seasonContext } from './context';
@@ -25,6 +26,10 @@ if (!SNAPSHOT_KINDS.includes(kind)) {
 runJob(`snapshot:${kind}`, async () => {
   const model = loadModelConfig();
   assertFitted(model);
+  const v2 = loadModelV2Config();
+  if (v2.base_model_version !== model.model_version) {
+    throw new Error(`config/model-v2.json builds on ${v2.base_model_version} but model-v1.json is ${model.model_version}`);
+  }
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -55,6 +60,10 @@ runJob(`snapshot:${kind}`, async () => {
     for (const l of await cfbd.lines(season, w)) spreads.set(l.game_id, l.spread);
   }
 
+  // v2 inputs: each team's starting QB (season pass-attempt leader). Fetched
+  // before anything is written, so a failure here writes nothing (hard rule 5).
+  const starters = selected.length > 0 ? startersFromAttempts(await cfbd.passAttempts(season), v2.qb.min_starter_share) : new Map();
+
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
   for (const m of selected) {
@@ -82,8 +91,16 @@ runJob(`snapshot:${kind}`, async () => {
       vegas_spread: spread,
       vegas_prob: spread === null ? null : vegasProb(model, spread, yesIsHome),
     });
+    const q = adjustForQb(
+      v2,
+      pred.prob,
+      starterStatus(db, v2, m.yes_team, starters.get(m.yes_team), snapshot_utc),
+      starterStatus(db, v2, opponent, starters.get(opponent), snapshot_utc),
+    );
+    rows.push({ ...rows[rows.length - 1], model_version: v2.model_version, my_prob: q.prob });
+    const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }
@@ -91,7 +108,7 @@ runJob(`snapshot:${kind}`, async () => {
   // A market snapshot without market prices is useless for scoring. If most
   // selected markets came back unquoted, the Kalshi response shape has
   // probably changed: fail loud rather than log rows with no comparison.
-  const quoted = rows.filter((r) => r.market_mid !== null).length;
+  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1 and v2 rows share quotes, so the ratio is unchanged
   if (rows.length > 0 && quoted * 2 < rows.length) {
     throw new Error(`only ${quoted} of ${rows.length} markets have a Kalshi bid/ask; refusing to write a snapshot without market prices`);
   }

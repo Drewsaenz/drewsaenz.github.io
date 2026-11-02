@@ -19,6 +19,8 @@
     "news:import": "tsx scripts/news.ts import",
     "news:restamp": "tsx scripts/news.ts restamp",
     "news:report": "tsx scripts/news.ts report",
+    "v2:check": "tsx scripts/v2.ts check",
+    "v2:backtest": "tsx scripts/v2.ts backtest",
     "fit": "tsx scripts/fit.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",

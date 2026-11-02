@@ -52,6 +52,7 @@ const CfbdLines = z.array(CfbdGameLines);
 const CfbdSp = z.array(z.object({ year: z.number().int(), team: z.string(), rating: z.number() }));
 const CfbdElo = z.array(z.object({ year: z.number().int(), team: z.string(), elo: z.number() }));
 const CfbdFpi = z.array(z.object({ year: z.number().int(), team: z.string(), fpi: z.number() }));
+const CfbdPlayerStats = z.array(z.object({ player: z.string(), team: z.string(), statType: z.string(), stat: z.coerce.number() }));
 
 export interface GameLines {
   game_id: number;
@@ -137,6 +138,16 @@ export class CfbdClient {
     const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const raw = await this.get('/ratings/fpi', { year: season }, CfbdFpi, ttl);
     return toMap(raw.map((r) => [r.team, r.fpi]));
+  }
+
+  /** Season-to-date pass attempts per player (one call for every team; cached like ratings). */
+  async passAttempts(season: number): Promise<{ team: string; player: string; attempts: number }[]> {
+    const raw = await this.get('/stats/player/season', { year: season, category: 'passing', seasonType: this.cfg.season_type }, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings);
+    const rows = raw.filter((r) => r.statType.toUpperCase() === 'ATT');
+    if (raw.length > 0 && rows.length === 0) {
+      throw new Error(`CFBD /stats/player/season returned ${raw.length} passing rows but none with statType ATT; the response shape has changed`);
+    }
+    return rows.map((r) => ({ team: r.team, player: r.player, attempts: r.stat }));
   }
 
   /** Elo as of the end of `week` (omit week for the latest available). */

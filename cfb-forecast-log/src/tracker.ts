@@ -75,6 +75,7 @@ export function latestReport(dir: string): { file: string; mtime: string } | nul
 
 interface WeekRow {
   game_id: number;
+  ticker: string | null;
   snapshot_kind: string;
   snapshot_utc: string;
   outcome: number | null;
@@ -134,7 +135,7 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
   const { season, week } = latest;
   const rows = db
     .prepare(
-      `SELECT f.game_id, f.snapshot_kind, f.snapshot_utc, f.outcome, f.resolved_at, g.kickoff_utc
+      `SELECT f.game_id, f.ticker, f.snapshot_kind, f.snapshot_utc, f.outcome, f.resolved_at, g.kickoff_utc
          FROM forecasts f JOIN games g ON g.game_id = f.game_id
         WHERE g.season = ? AND g.week = ? AND f.snapshot_kind <> 'manual'`,
     )
@@ -151,7 +152,7 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
   // 2. Tuesday predictions
   const tues = rows.filter((x) => x.snapshot_kind === 'tuesday');
   stages[1].status = tues.length > 0 ? 'done' : 'pending';
-  stages[1].detail = tues.length > 0 ? `${tues.length} markets · ${shortTime(tues[0].snapshot_utc)}` : 'Not logged yet';
+  stages[1].detail = tues.length > 0 ? `${new Set(tues.map((x) => x.ticker)).size} markets · ${shortTime(tues[0].snapshot_utc)}` : 'Not logged yet';
 
   // 3. Pregame snapshots, counted per game. Tue/Wed games are outside the Thu-Sat schedule.
   const games = new Map<number, { kickoff: string; pregame: boolean }>();

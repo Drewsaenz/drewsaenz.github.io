@@ -1,0 +1,23 @@
+{
+  "model_version": "v2-qb",
+  "base_model_version": "v1-blend",
+  "created_at": "2026-11-02",
+  "points_to_logit": 0.14105,
+  "qb": {
+    "out_points": 6,
+    "status_weights": {
+      "out": 1,
+      "doubtful": 0.75,
+      "questionable": 0,
+      "limited": 0,
+      "probable": 0,
+      "available": 0,
+      "returning": 0
+    },
+    "lookback_days": 8,
+    "min_confidence": 0.5,
+    "min_starter_share": 0.4
+  },
+  "clamp": [0.02, 0.98],
+  "_note": "v2-qb = v1-blend probability, then a logit shift of out_points * points_to_logit * status weight against a team whose season pass-attempt leader is reported out (1.0) or doubtful (0.75). points_to_logit is the mean of v1's fitted SP+ and FPI slopes (0.1260, 0.1561 logit per point). out_points is a prior, not a fit: there is no historical injury feed to fit it on. Revisit after ~4 weeks of v2 rows; any change is a new model_version (v2.1-qb), never an edit here."
+}
