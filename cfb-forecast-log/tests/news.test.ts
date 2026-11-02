@@ -72,6 +72,8 @@ test('facts resolve team names, store once, and skip reprocessing', () => {
   assert.equal(n, 3); // duplicate ignored
   assert.ok(alreadyProcessed(db, t.meta.url, hash));
   assert.ok(!alreadyProcessed(db, t.meta.url, 'other'));
+  storeFacts(db, { ...t.meta, url: 'https://x/empty' }, [], { file: 'e.md', sha1: 'h', windows: 0, input_tokens: 0, output_tokens: 0, model: 'test' });
+  assert.ok(!alreadyProcessed(db, 'https://x/empty', 'h')); // zero-window runs are re-checked
 
   const news = teamNews(db, '2026-10-20T00:00:00Z', '2026-11-05T00:00:00Z');
   assert.deepEqual(news.map((x) => x.team).sort(), ['Mississippi State', 'Nowhere U', 'Texas']);

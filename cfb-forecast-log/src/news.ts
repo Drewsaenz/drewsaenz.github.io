@@ -252,9 +252,15 @@ export function sha1(text: string): string {
   return crypto.createHash('sha1').update(text).digest('hex');
 }
 
+/**
+ * A transcript counts as processed when its stored hash matches and the run
+ * produced at least one window. Runs that found nothing are re-checked each
+ * time (cheap: no API call unless the keyword filter now matches), so a wider
+ * filter can pick up files an earlier filter skipped.
+ */
 export function alreadyProcessed(db: Db, url: string, hash: string): boolean {
-  const row = db.prepare('SELECT sha1 FROM news_runs WHERE source_url = ?').get(url) as { sha1: string } | undefined;
-  return row?.sha1 === hash;
+  const row = db.prepare('SELECT sha1, windows FROM news_runs WHERE source_url = ?').get(url) as { sha1: string; windows: number } | undefined;
+  return row?.sha1 === hash && row.windows > 0;
 }
 
 export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], run: { file: string; sha1: string; windows: number; input_tokens: number; output_tokens: number; model: string }): number {
