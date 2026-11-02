@@ -12,3 +12,6 @@ PATH=/opt/homebrew/bin:/usr/bin:/bin
 0  6  * * 0,1      cd $PROJECT && npm run -s resolve           >> data/jobs.log 2>&1
 30 6  * * 1        cd $PROJECT && npm run -s report            >> data/jobs.log 2>&1
 */15 * * * *       cd $PROJECT && npm run -s tracker          > /dev/null 2>&1
+# News facts from transcripts/articles (after TranscriptGPT's :17 and :47 pulls). Needs ANTHROPIC_API_KEY in .env.
+45 * * * *         cd $PROJECT && npm run -s news:extract -- --model claude-haiku-5-5 >> data/jobs.log 2>&1
+
