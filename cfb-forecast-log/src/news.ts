@@ -122,7 +122,7 @@ export interface Window {
 }
 
 export const AVAILABILITY_RE =
-  /\b(injur\w*|out for|ruled out|questionable|doubtful|probable|suspend\w*|sling|walking boot|surgery|concussion|won'?t play|will not play|not going to play|expected to (play|start)|good to go|game[- ]time decision|backup (quarterback|qb)|third[- ]string|starting (quarterback|qb|lineup)|depth chart|practiced|did not practice|limited|returning|back from|availability report|injury report|knocked out|left the game|did not return|season[- ]ending|out for the (season|year)|miss(ed|ing)? (the|this|a|another) game|banged up|hurt|trending (toward|towards|in the right)|pitch count|street clothes|not 100|cleared)\b/i;
+  /\b(injur\w*|out for|ruled out|questionable|doubtful|probable|suspend\w*|sling|walking boot|surgery|concussion|won'?t play|will not play|not going to play|expected to (play|start)|expected back|good to go|game[- ]time decision|backup (quarterback|qb)|third[- ]string|starting (quarterback|qb|lineup)|depth chart|practiced|did not practice|didn'?t practice|limited|returning|back from|availability report|injury report|knocked out|left the game|did not return|didn'?t return|season[- ]ending|out for the (season|year)|out indefinitely|(will|could|may|might) miss|miss(ed|ing)? (the|this|a|another|some) (game|time|week)|day[- ]to[- ]day|week[- ]to[- ]week|banged up|hurt|bandag\w*|brace|cast|crutch\w*|bleed\w*|sore|tweak\w*|trending (toward|towards|in the right)|pitch count|street clothes|not 100|cleared|full go|full participant)\b/i;
 
 export function windows(lines: TranscriptLine[], size = 40, stride = 30): Window[] {
   const out: Window[] = [];

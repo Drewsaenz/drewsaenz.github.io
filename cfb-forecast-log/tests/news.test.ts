@@ -42,6 +42,8 @@ test('relevantWindows keeps availability talk and drops recruiting and candy cor
   assert.match(ws[0].text, /starting quarterback/);
   assert.ok(AVAILABILITY_RE.test('he is listed as doubtful'));
   assert.ok(AVAILABILITY_RE.test('Coleman was in street clothes'));
+  assert.ok(AVAILABILITY_RE.test('He had a bandaged hand after bleeding in the game'));
+  assert.ok(AVAILABILITY_RE.test('Smothers could miss two weeks and is day-to-day'));
   assert.ok(!AVAILABILITY_RE.test('three star linebackers are underrated'));
   assert.ok(!AVAILABILITY_RE.test('I think Texas covers the spread'));
 });
