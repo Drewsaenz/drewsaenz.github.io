@@ -226,3 +226,9 @@ TZ=America/Chicago
 - Changing any constant in `config/` after the first snapshot has been written.
 - Adding a new rating source (needs a new `model_version`).
 - Anything touching Kalshi auth or order endpoints (answer is no in v1).
+
+## Transcripts (context only, not a model input)
+
+`data/transcripts/<collection>/*.md|*.txt` are YouTube transcripts (Texas football shows, pressers, film reviews) pushed from `~/Desktop/Home/TranscriptGPT`. The `.md` ones carry YAML frontmatter (title, channel, url, video_id, saved). They are gitignored with the rest of `data/`. Use them when Drew asks for qualitative context on a game or team (injuries, QB situation, coaching sentiment). They are NOT a rating source: do not wire them into `my_prob` or any `model_version` without asking (see "Things to ask Drew before doing").
+
+Availability facts go in `news_facts` (see `src/news.ts`). Two ways to fill it: `npm run news:extract` calls the Claude API (needs a funded `ANTHROPIC_API_KEY` in `.env`), or the no-API path: `npm run news:windows` dumps the availability segments to `data/news-work/*.windows.json`, a Claude Code session writes the matching `*.facts.json` by hand, and `npm run news:import` stores them through the same code path. Known limit: the scraper records only `saved`, not the publish date, so `as_of` is the scrape time; a transcript pulled after kickoff attaches its facts to the team's *next* game in the News check.

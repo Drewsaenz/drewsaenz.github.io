@@ -4,8 +4,8 @@
 # and npm. Find it with: dirname "$(which node)"
 CRON_TZ=America/Chicago
 TZ=America/Chicago
-PROJECT=/path/to/cfb-forecast-log
-PATH=/path/to/node/bin:/usr/bin:/bin
+PROJECT=/Users/drews/Desktop/Home/drewsaenz.github.io/cfb-forecast-log
+PATH=/opt/homebrew/bin:/usr/bin:/bin
 0  6  * * 2        cd $PROJECT && npm run -s ratings           >> data/jobs.log 2>&1
 0  7  * * 2        cd $PROJECT && npm run -s snapshot:tuesday  >> data/jobs.log 2>&1
 */30 * * * 4,5,6   cd $PROJECT && npm run -s snapshot:pregame  >> data/jobs.log 2>&1
