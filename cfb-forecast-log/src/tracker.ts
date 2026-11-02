@@ -243,19 +243,16 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export function renderTracker(s: TrackerState, results: ResultsView | null = null, board: BoardView | null = null): string {
   const icon: Record<StageStatus, string> = { done: '✓', active: '●', pending: '', failed: '!' };
   const word: Record<StageStatus, string> = { done: 'Done', active: 'In progress', pending: 'Up next', failed: 'Failed' };
-  const stages = s.stages
-    .map(
-      (st, i) => `
-      <li class="stage ${st.status}">
-        <div class="dot" aria-hidden="true">${icon[st.status] || i + 1}</div>
-        <div class="text">
-          <div class="label">${esc(st.label)} <span class="state">${word[st.status]}</span></div>
-          <div class="sched">${esc(st.schedule)}</div>
-          ${st.detail ? `<div class="detail">${esc(st.detail)}</div>` : ''}
-        </div>
-      </li>`,
-    )
+  const SHORT: Record<string, string> = { ratings: 'Ratings', tuesday: 'Picks', pregame: 'Pregame', results: 'Graded', report: 'Report' };
+  const steps = s.stages
+    .map((st, i) => {
+      const tip = [st.label, word[st.status], st.schedule, st.detail].filter(Boolean).join(' · ');
+      return `<li class="step ${st.status}" title="${esc(tip)}"><span class="dot" aria-hidden="true">${icon[st.status] || i + 1}</span><span class="sl">${esc(SHORT[st.key] ?? st.label)}</span><span class="vh">${esc(word[st.status])}</span></li>`;
+    })
     .join('');
+  // One line of detail: the failed stage, else the first unfinished one, else the last.
+  const focus = s.stages.find((x) => x.status === 'failed') ?? s.stages.find((x) => x.status !== 'done') ?? s.stages[s.stages.length - 1];
+  const focusLine = `<div class="focus ${focus.status}"><b>${esc(focus.label)}</b> <span class="state">${word[focus.status]}</span><span class="small"> · ${esc(focus.detail || focus.schedule)}</span></div>`;
   const pips = Array.from({ length: SEASON_TARGET_WEEKS }, (_, i) => `<span class="pip${i < s.weeksScored ? ' on' : ''}"></span>`).join('');
   const warnings = s.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join('');
   const jobs = s.jobs
@@ -280,17 +277,19 @@ h1{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
 .upd{color:var(--muted);font-size:13px;margin-bottom:20px}.upd.stale{color:var(--bad)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
 .warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:14px}
-ol{list-style:none;margin:0;padding:0}
-.stage{display:flex;gap:14px;position:relative;padding-bottom:18px}.stage:last-child{padding-bottom:0}
-.stage:not(:last-child)::after{content:"";position:absolute;left:15px;top:32px;bottom:2px;width:2px;background:var(--line)}
-.stage.done:not(:last-child)::after{background:var(--ok)}
-.dot{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;border:2px solid var(--line);color:var(--muted);background:var(--card)}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,1fr)}
+.step{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:default}
+.step:not(:first-child)::before{content:"";position:absolute;top:12px;left:-50%;right:50%;height:2px;background:var(--line)}
+.step.done+.step::before{background:var(--ok)}
+.dot{position:relative;z-index:1;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px;border:2px solid var(--line);color:var(--muted);background:var(--card)}
 .done .dot{background:var(--ok);border-color:var(--ok);color:#fff}
 .active .dot{border-color:var(--accent);color:var(--accent)}
 .failed .dot{background:var(--bad);border-color:var(--bad);color:#fff}
-.label{font-weight:600}.state{font-weight:500;font-size:12px;color:var(--muted);margin-left:6px}
+.sl{font-size:12px;color:var(--muted)}.done .sl,.active .sl{color:var(--ink)}.failed .sl{color:var(--bad)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.focus{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
+.label{font-weight:600}.state{font-weight:500;font-size:12px;color:var(--muted);margin-left:4px}
 .active .state{color:var(--accent)}.failed .state{color:var(--bad)}.done .state{color:var(--ok)}
-.sched,.detail{font-size:13px;color:var(--muted)}.detail{color:var(--ink)}
 .pips{display:flex;gap:6px;margin:8px 0 4px}.pip{flex:1;height:8px;border-radius:4px;background:var(--line)}.pip.on{background:var(--accent)}
 .small{font-size:13px;color:var(--muted)}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:500}td.bad{color:var(--bad);font-weight:600}
@@ -302,7 +301,7 @@ ${BOARD_CSS}
 <div class="head">${esc(s.headline)}</div>
 <div class="upd" id="upd" data-at="${s.generatedAt}">Updated ${esc(shortTime(s.generatedAt))}</div>
 ${warnings}
-<section class="card"><ol>${stages}</ol></section>
+<section class="card"><ol class="steps">${steps}</ol>${focusLine}</section>
 <section class="card">
   <div class="label">Season progress</div>
   <div class="pips">${pips}</div>
