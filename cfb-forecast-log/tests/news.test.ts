@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { openDb, upsertGames } from '../src/db';
-import { AVAILABILITY_RE, alreadyProcessed, batchWindows, parseTranscript, qbFlags, relevantWindows, resolveFactTeams, sha1, storeFacts, teamNews, windows, type Fact } from '../src/news';
+import { AVAILABILITY_RE, alreadyProcessed, batchWindows, parseTranscript, qbFlags, relevantWindows, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, windows, type Fact } from '../src/news';
 import { game } from './helpers';
 
 const md = fs.readFileSync(path.join(__dirname, 'fixtures', 'transcript-sample.md'), 'utf8');
@@ -84,4 +84,23 @@ test('qbFlags ignores facts recorded after kickoff', () => {
   const t = parseTranscript(md); // saved 2026-11-01, after kickoff
   storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'AJ Swann', position: 'QB', status: 'out', scope: 'game', detail: 'knocked out', confidence: 1, timestamp_sec: 1 }], {}, new Set(['Mississippi State'])), { file: 'x', sha1: 'h', windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
   assert.equal(qbFlags(db).size, 0);
+});
+
+test('restampFacts moves facts to the publish date once the scraper backfills it', () => {
+  const db = openDb(':memory:');
+  upsertGames(db, [game({ game_id: 1, season: 2026, week: 9, home_team: 'Texas', away_team: 'Mississippi State', kickoff_utc: '2026-10-31T23:30:00Z' })]);
+  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'restamp-'));
+  const file = path.join(dir, 't.md');
+  fs.writeFileSync(file, md); // saved-only front matter, Nov 1
+  const t = parseTranscript(md, file);
+  storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'x', confidence: 1, timestamp_sec: 1 }], {}, new Set(['Mississippi State'])), { file, sha1: sha1(md), windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
+  assert.equal(qbFlags(db).size, 0); // Nov 1 is after kickoff
+  // Scraper backfills a publish date before the game.
+  const md2 = md.replace('saved: 2026-11-01T18:00:00.000Z', 'published: 2026-10-29T17:00:00.000Z\npublished_source: rss\nsaved: 2026-11-01T18:00:00.000Z');
+  fs.writeFileSync(file, md2);
+  const first = restampFacts(db, [file]);
+  assert.deepEqual(first, { transcripts: 1, moved: 1, unchanged: 0, noDate: 0 });
+  assert.deepEqual(qbFlags(db).get(1), ['Mississippi State QB Kamario Taylor out']);
+  assert.ok(alreadyProcessed(db, t.meta.url, sha1(md2))); // hash refreshed, no re-extraction
+  assert.deepEqual(restampFacts(db, [file]), { transcripts: 0, moved: 0, unchanged: 1, noDate: 0 });
 });

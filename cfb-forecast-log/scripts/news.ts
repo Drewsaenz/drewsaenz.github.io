@@ -4,6 +4,12 @@
  *   npm run news:windows -- [--dir data/transcripts] [--out data/news-work]
  *   npm run news:import  -- --in data/news-work [--model manual]
  *   npm run news:report  -- [--days 10]
+ *   npm run news:restamp -- [--dir data/transcripts]
+ *
+ * restamp: after the scraper backfills `published:` into transcripts that were
+ *          extracted while only `saved:` existed, move each stored fact's as_of
+ *          to the publish date (and refresh the stored content hash) so the
+ *          News check attaches facts to the right game. No API calls.
  *
  * extract: parse every transcript under --dir, keep availability segments,
  *          extract facts with Claude, store them. Files already processed
@@ -25,7 +31,7 @@ import { loadEnv } from '../src/env';
 import { log, runJob } from '../src/log';
 import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
-import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactTeams, sha1, storeFacts, teamNews } from '../src/news';
+import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews } from '../src/news';
 import { seasonFor } from '../src/season';
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -188,6 +194,16 @@ if (cmd === 'extract') {
     }
     log.info(`imported ${done} file(s), skipped ${skipped} already done; ${totalFacts} new fact(s) (model=${model})`);
   });
+} else if (cmd === 'restamp') {
+  runJob('news:restamp', async () => {
+    loadEnv();
+    const dir = path.resolve(arg('dir', path.join(DATA_DIR, 'transcripts'))!);
+    const db = openDb();
+    const files = listTranscripts(dir);
+    if (files.length === 0) throw new Error(`no transcripts found under ${dir}`);
+    const res = restampFacts(db, files);
+    log.info(`restamped ${res.moved} fact(s) across ${res.transcripts} transcript(s); ${res.unchanged} transcript(s) unchanged; ${res.noDate} still without a publish date`);
+  });
 } else if (cmd === 'report') {
   runJob('news:report', async () => {
     loadEnv();
@@ -208,6 +224,6 @@ if (cmd === 'extract') {
     }
   });
 } else {
-  console.error('usage: tsx scripts/news.ts <extract|windows|import|report> [options]');
+  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|report> [options]');
   process.exit(2);
 }

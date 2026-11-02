@@ -284,6 +284,43 @@ export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], ru
   return inserted;
 }
 
+export interface RestampResult {
+  transcripts: number;
+  moved: number;
+  unchanged: number;
+  noDate: number;
+}
+
+/**
+ * Re-read each transcript's front matter and, where it now carries a publish
+ * date that differs from the stored as_of, move its facts to that date and
+ * refresh the content hash so the file is not re-extracted.
+ */
+export function restampFacts(db: Db, files: string[]): RestampResult {
+  const res: RestampResult = { transcripts: 0, moved: 0, unchanged: 0, noDate: 0 };
+  const upd = db.prepare('UPDATE news_facts SET as_of = ? WHERE source_url = ? AND as_of <> ?');
+  const run = db.prepare('UPDATE news_runs SET sha1 = ?, file = ? WHERE source_url = ?');
+  db.transaction(() => {
+    for (const file of files) {
+      const md = fs.readFileSync(file, 'utf8');
+      const t = parseTranscript(md, file);
+      if (t.meta.as_of_source !== 'published') {
+        res.noDate += 1;
+        continue;
+      }
+      const moved = upd.run(t.meta.as_of, t.meta.url, t.meta.as_of).changes;
+      run.run(sha1(md), file, t.meta.url);
+      if (moved > 0) {
+        res.transcripts += 1;
+        res.moved += moved;
+      } else {
+        res.unchanged += 1;
+      }
+    }
+  })();
+  return res;
+}
+
 /** Recursively list transcript .md files under a directory. */
 export function listTranscripts(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
