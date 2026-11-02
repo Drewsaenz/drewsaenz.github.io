@@ -36,6 +36,8 @@ export const ScoringConfigSchema = z.object({
   edge_min: z.number().min(0).max(1),
   taker_fee_rate: z.number().min(0),
   calibration_bins: z.number().int().min(2),
+  /** |my_prob - vegas_prob| at or above this is treated as 'the market knows something' rather than edge. */
+  news_gap_min: z.number().min(0).max(1).default(0.1),
 });
 export type ScoringConfig = z.infer<typeof ScoringConfigSchema>;
 
@@ -74,6 +76,7 @@ export const AliasesSchema = z.object({
   _note: z.string().optional(),
   fei: z.record(z.string(), z.string()),
   kalshi: z.record(z.string(), z.string()),
+  news: z.record(z.string(), z.string()).optional(),
 });
 export type Aliases = z.infer<typeof AliasesSchema>;
 

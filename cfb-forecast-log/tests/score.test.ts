@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ScoringConfig } from '../src/config';
-import { accuracy, calibration, compareAccuracy, edgeDecay, hypotheticalPnl, takerFee, type ScoreRow } from '../src/score';
+import { accuracy, calibration, compareAccuracy, edgeDecay, hypotheticalPnl, newsCheck, takerFee, type ScoreRow } from '../src/score';
 
-const cfg: ScoringConfig = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10 };
+const cfg: ScoringConfig = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10, news_gap_min: 0.1 };
 
 function row(p: Partial<ScoreRow> & { my_prob: number; outcome: 0 | 1 }): ScoreRow {
   return { game_id: 1, ticker: 'T', snapshot_kind: 'tuesday', model_version: 'v1-blend', market_mid: null, vegas_prob: null, yes_bid: null, yes_ask: null, ...p };
@@ -85,4 +85,19 @@ test('edgeDecay pairs tuesday and pregame rows on the same market', () => {
   assert.equal(d.games, 1);
   assert.ok(Math.abs(d.tuesday.mine.brier! - 0.16) < 1e-12);
   assert.ok(Math.abs(d.pregame.mine.brier! - 0.09) < 1e-12);
+});
+
+test('newsCheck splits rows by QB flags and Vegas gap, and scores the clean set', () => {
+  const rows: ScoreRow[] = [
+    row({ game_id: 1, my_prob: 0.74, vegas_prob: 0.56, market_mid: 0.54, yes_bid: 53, yes_ask: 55, outcome: 0 }), // big gap -> flagged
+    row({ game_id: 2, my_prob: 0.62, vegas_prob: 0.60, market_mid: 0.55, yes_bid: 54, yes_ask: 56, outcome: 1 }), // QB flag -> flagged
+    row({ game_id: 3, my_prob: 0.66, vegas_prob: 0.65, market_mid: 0.58, yes_bid: 57, yes_ask: 59, outcome: 1 }), // clean
+  ];
+  const nc = newsCheck(rows, new Map([[2, ['Texas QB Arch Manning out']]]), { ...cfg, news_gap_min: 0.1 });
+  assert.deepEqual(nc.flagged.map((r) => r.game_id), [1, 2]);
+  assert.deepEqual(nc.clean.map((r) => r.game_id), [3]);
+  assert.match(nc.reasons.get(rows[0])!, /gap 0.18/);
+  assert.equal(nc.reasons.get(rows[1]), 'Texas QB Arch Manning out');
+  assert.equal(nc.cleanPnl.maker.n, 1);
+  assert.ok(nc.cleanPnl.maker.pnl > 0);
 });

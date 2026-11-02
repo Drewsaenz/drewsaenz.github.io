@@ -11,9 +11,10 @@ import { loadEnv } from '../env';
 import { log, runJob } from '../log';
 import { REPORTS_DIR } from '../paths';
 import { isoWeekLabel } from '../season';
-import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, type ScoreRow } from '../score';
+import { qbFlags } from '../news';
+import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, newsCheck, type ScoreRow } from '../score';
 
-export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = new Date()): string {
+export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = new Date(), flags: Map<number, string[]> = new Map()): string {
   const out: string[] = [];
   out.push(`# cfb-forecast-log report ${isoWeekLabel(now)}`, '', `Generated ${now.toISOString()}. Resolved non-manual rows: ${rows.length}.`, '');
   if (rows.length === 0) {
@@ -64,6 +65,27 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
     out.push(`| pregame | ${d.games} | ${f(d.pregame.mine.brier)} | ${f(d.pregame.market.brier)} | ${f(d.pregame.vegas.brier)} |`);
     out.push('');
 
+    // 5. News check: which Tuesday gaps the market could explain, and what survives without them.
+    const tuesRows = byKind.get('tuesday') ?? [];
+    const nc = newsCheck(tuesRows, flags, cfg);
+    out.push(`### News check (Tuesday rows: QB out/doubtful before kickoff, or model vs Vegas gap >= ${cfg.news_gap_min})`, '');
+    out.push('| rows | N | my Brier | market Brier | maker P&L | taker P&L |', '|---|---:|---:|---:|---:|---:|');
+    out.push(`| all | ${tuesRows.length} | ${f(compareAccuracy(tuesRows).mine.brier)} | ${f(compareAccuracy(tuesRows).market.brier)} | ${money(nc.allPnl.maker.pnl)} | ${money(nc.allPnl.taker.pnl)} |`);
+    out.push(`| news-flagged | ${nc.flagged.length} | ${f(nc.flaggedAcc.mine.brier)} | ${f(nc.flaggedAcc.market.brier)} | ${money(nc.allPnl.maker.pnl - nc.cleanPnl.maker.pnl)} | ${money(nc.allPnl.taker.pnl - nc.cleanPnl.taker.pnl)} |`);
+    out.push(`| clean | ${nc.clean.length} | ${f(nc.cleanAcc.mine.brier)} | ${f(nc.cleanAcc.market.brier)} | ${money(nc.cleanPnl.maker.pnl)} | ${money(nc.cleanPnl.taker.pnl)} |`, '');
+    if (nc.flagged.length) {
+      out.push('| flagged game | pick | model | Vegas | reason | result |', '|---|---|---:|---:|---|---|');
+      const seen = new Set<string>();
+      for (const r of nc.flagged) {
+        const key = `${r.game_id}:${nc.reasons.get(r)}`;
+        const label = r.home_team && r.away_team ? `${r.away_team} at ${r.home_team}` : `game ${r.game_id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(`| ${label} | ${r.ticker ?? ''} | ${f(r.my_prob, 3)} | ${f(r.vegas_prob, 3)} | ${nc.reasons.get(r)} | ${r.outcome === 1 ? 'yes won' : 'yes lost'} |`);
+      }
+      out.push('');
+    }
+
     // Summary lines
     const tues = byKind.get('tuesday') ?? modelRows;
     const acc = compareAccuracy(tues);
@@ -83,6 +105,11 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
         ? `${model}: maker-only trading on the ${cfg.edge_min} edge filter would have made ${money(mk.pnl)} on ${mk.n} Tuesday rows (ROI ${((mk.roi ?? 0) * 100).toFixed(1)}%, fills not guaranteed).`
         : `${model}: no Tuesday rows cleared the ${cfg.edge_min} edge filter, so no hypothetical maker P&L.`,
     );
+    if (nc.flagged.length > 0) {
+      summaries.push(
+        `${model}: ${nc.flagged.length} of ${tuesRows.length} Tuesday rows look news-driven; without them maker P&L is ${money(nc.cleanPnl.maker.pnl)} on ${nc.cleanPnl.maker.n} trades and my Brier is ${f(nc.cleanAcc.mine.brier)} vs market ${f(nc.cleanAcc.market.brier)}.`,
+      );
+    }
   }
 
   out.push('## Summary', '', ...summaries.map((s) => `- ${s}`), '');
@@ -95,12 +122,14 @@ if (require.main === module) {
     const db = openDb();
     const rows = db
       .prepare(
-        `SELECT game_id, ticker, snapshot_kind, model_version, my_prob, market_mid, vegas_prob, yes_bid, yes_ask, outcome
-           FROM forecasts WHERE outcome IS NOT NULL AND snapshot_kind <> 'manual'`,
+        `SELECT f.game_id, f.ticker, f.snapshot_kind, f.model_version, f.my_prob, f.market_mid, f.vegas_prob, f.yes_bid, f.yes_ask, f.outcome,
+                g.home_team, g.away_team, g.kickoff_utc
+           FROM forecasts f JOIN games g ON g.game_id = f.game_id
+          WHERE f.outcome IS NOT NULL AND f.snapshot_kind <> 'manual'`,
       )
       .all() as ScoreRow[];
     const now = new Date();
-    const md = buildReport(rows, loadScoringConfig(), now);
+    const md = buildReport(rows, loadScoringConfig(), now, qbFlags(db));
     process.stdout.write(md);
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
     const file = path.join(REPORTS_DIR, `${isoWeekLabel(now)}.md`);

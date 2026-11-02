@@ -40,7 +40,7 @@ test('pickLine follows provider priority then falls back', () => {
 });
 
 test('buildReport renders sections and a 3-line summary', () => {
-  const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10 };
+  const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10, news_gap_min: 0.1 };
   const empty = buildReport([], cfg, new Date('2026-10-26T12:00:00Z'));
   assert.ok(empty.includes('No resolved forecasts yet'));
   const md = buildReport(

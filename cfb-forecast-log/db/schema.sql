@@ -83,3 +83,39 @@ CREATE TRIGGER IF NOT EXISTS trg_forecasts_resolve_only
 BEGIN
   SELECT RAISE(ABORT, 'forecasts is append-only: only outcome/resolved_at may be filled, once');
 END;
+
+-- News facts extracted from podcast / video transcripts (data/transcripts).
+-- Facts, not opinions: who is out/doubtful/probable, as stated on a show.
+CREATE TABLE IF NOT EXISTS news_facts (
+  id            INTEGER PRIMARY KEY,
+  source_url    TEXT NOT NULL,
+  source_channel TEXT,
+  source_title  TEXT,
+  as_of         TEXT NOT NULL,        -- video publish date if the scraper recorded one, else the scrape time
+  team_raw      TEXT NOT NULL,        -- team name as spoken
+  team          TEXT,                 -- CFBD canonical name when resolvable
+  player        TEXT,
+  position      TEXT,                 -- QB, RB, WR, OL, DL, LB, DB, K, P, coach, or NULL
+  status        TEXT NOT NULL,        -- out | doubtful | questionable | probable | available | returning | limited | unknown
+  scope         TEXT,                 -- game | weeks | season | unknown
+  detail        TEXT,                 -- short paraphrase or quote
+  confidence    REAL,
+  timestamp_sec INTEGER,
+  extracted_at  TEXT NOT NULL,
+  model         TEXT NOT NULL,
+  UNIQUE (source_url, team_raw, player, status)
+);
+CREATE INDEX IF NOT EXISTS idx_news_facts_team ON news_facts(team, as_of);
+
+-- One row per processed transcript so re-runs skip files already extracted.
+CREATE TABLE IF NOT EXISTS news_runs (
+  source_url    TEXT PRIMARY KEY,
+  file          TEXT NOT NULL,
+  sha1          TEXT NOT NULL,
+  windows       INTEGER NOT NULL,
+  facts         INTEGER NOT NULL,
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  processed_at  TEXT NOT NULL,
+  model         TEXT NOT NULL
+);

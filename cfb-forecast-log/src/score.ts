@@ -15,6 +15,9 @@ export interface ScoreRow {
   yes_bid: number | null;
   yes_ask: number | null;
   outcome: 0 | 1;
+  home_team?: string;
+  away_team?: string;
+  kickoff_utc?: string;
 }
 
 export interface Accuracy {
@@ -198,6 +201,51 @@ export function edgeDecay(rows: ScoreRow[]): EdgeDecay {
     games: both.length,
     tuesday: compareAccuracy(both.map((k) => tues.get(k)!)),
     pregame: compareAccuracy(both.map((k) => pre.get(k)!)),
+  };
+}
+
+export interface NewsCheck {
+  flagged: ScoreRow[];
+  clean: ScoreRow[];
+  reasons: Map<ScoreRow, string>;
+  flaggedAcc: AccuracyComparison;
+  cleanAcc: AccuracyComparison;
+  allPnl: PnlReport;
+  cleanPnl: PnlReport;
+}
+
+/**
+ * Split rows into "news-flagged" and "clean". A row is flagged when a
+ * pre-kickoff quarterback flag exists for its game, or when the model and the
+ * closing line disagree by at least `news_gap_min` (the market pricing in
+ * something the ratings cannot see). Scoring the clean rows alone shows how
+ * much of the apparent edge survives once news-explained gaps are removed.
+ */
+export function newsCheck(rows: ScoreRow[], qbFlags: Map<number, string[]>, cfg: ScoringConfig): NewsCheck {
+  const flagged: ScoreRow[] = [];
+  const clean: ScoreRow[] = [];
+  const reasons = new Map<ScoreRow, string>();
+  for (const r of rows) {
+    const qb = qbFlags.get(r.game_id);
+    const gap = r.vegas_prob === null ? null : Math.abs(r.my_prob - r.vegas_prob);
+    if (qb && qb.length) {
+      reasons.set(r, qb.join('; '));
+      flagged.push(r);
+    } else if (gap !== null && gap >= cfg.news_gap_min) {
+      reasons.set(r, `model vs Vegas gap ${gap.toFixed(2)}`);
+      flagged.push(r);
+    } else {
+      clean.push(r);
+    }
+  }
+  return {
+    flagged,
+    clean,
+    reasons,
+    flaggedAcc: compareAccuracy(flagged),
+    cleanAcc: compareAccuracy(clean),
+    allPnl: hypotheticalPnl(rows, cfg),
+    cleanPnl: hypotheticalPnl(clean, cfg),
   };
 }
 

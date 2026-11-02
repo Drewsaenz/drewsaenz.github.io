@@ -34,5 +34,18 @@
     "Nicholls State": "Nicholls",
     "Grambling State": "Grambling",
     "Central Connecticut State": "Central Connecticut"
+  },
+  "news": {
+    "Horns": "Texas",
+    "Longhorns": "Texas",
+    "Bulldogs": "Mississippi State",
+    "Miss State": "Mississippi State",
+    "Ole Miss Rebels": "Ole Miss",
+    "Buckeyes": "Ohio State",
+    "Sooners": "Oklahoma",
+    "Aggies": "Texas A&M",
+    "Tigers (LSU)": "LSU",
+    "Mizzou": "Missouri",
+    "Mizzou Tigers": "Missouri"
   }
 }

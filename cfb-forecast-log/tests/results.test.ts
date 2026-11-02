@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildResults, niceTicks, renderResults, type ResultRow } from '../src/results';
 import { hypotheticalPnl } from '../src/score';
 
-const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10 };
+const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10, news_gap_min: 0.1 };
 const row = (p: Partial<ResultRow>): ResultRow => ({
   game_id: 1, ticker: 'T', snapshot_kind: 'tuesday', model_version: 'v1-blend', my_prob: 0.6, market_mid: 0.5, vegas_prob: 0.5,
   yes_bid: 48, yes_ask: 52, outcome: 1, season: 2026, week: 9, kickoff_utc: '2026-10-31T16:00:00Z', yes_team: 'Texas', ...p,
