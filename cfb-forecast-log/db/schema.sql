@@ -84,6 +84,28 @@ BEGIN
   SELECT RAISE(ABORT, 'forecasts is append-only: only outcome/resolved_at may be filled, once');
 END;
 
+-- Forecasts that can never be graded fairly: the game was cancelled, moved to
+-- another week, or dropped by CFBD, or a pregame row was taken for a kickoff
+-- that later moved. Kept apart from forecasts so that table stays append-only.
+-- Voided rows are excluded from grading and scoring. Voids are permanent.
+CREATE TABLE IF NOT EXISTS forecast_voids (
+  forecast_id INTEGER PRIMARY KEY REFERENCES forecasts(id),
+  reason      TEXT NOT NULL,
+  voided_at   TEXT NOT NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_voids_append_only_del
+  BEFORE DELETE ON forecast_voids
+BEGIN
+  SELECT RAISE(ABORT, 'forecast_voids is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_voids_append_only_upd
+  BEFORE UPDATE ON forecast_voids
+BEGIN
+  SELECT RAISE(ABORT, 'forecast_voids is append-only');
+END;
+
 -- News facts extracted from podcast / video transcripts (data/transcripts).
 -- Facts, not opinions: who is out/doubtful/probable, as stated on a show.
 CREATE TABLE IF NOT EXISTS news_facts (

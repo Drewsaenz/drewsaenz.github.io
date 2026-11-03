@@ -166,7 +166,7 @@ scores the two side by side.
 | `ratings`  | Tue 06:00                        | Pull SP+, Elo, FPI from CFBD; scrape FEI; upsert `ratings` |
 | `snapshot:tuesday` | Tue 07:00                | Pull games + lines + Kalshi markets for the week; write one `forecasts` row per market, `snapshot_kind='tuesday'` |
 | `snapshot:pregame` | every 30 min Thu–Sat     | For games kicking off in the next 90 min with no `pregame` row yet, write a `pregame` row |
-| `resolve`  | Sun 06:00 and Mon 06:00          | Pull completed games; fill `outcome` + `resolved_at` on all pending rows |
+| `resolve`  | Sun 06:00 and Mon 06:00          | Pull completed games; fill `outcome` + `resolved_at` on all pending rows. Rows that can't be graded fairly (game cancelled, moved to another week, dropped by CFBD, or a pregame row whose kickoff later moved) go to `forecast_voids` instead (rules in `src/grading.ts`) |
 | `report`   | Mon 06:30                        | Score everything resolved; write `reports/YYYY-WW.md` |
 
 Every job is idempotent: re-running it in the same window must not create

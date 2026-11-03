@@ -138,9 +138,18 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
     .prepare(
       `SELECT f.game_id, f.ticker, f.snapshot_kind, f.snapshot_utc, f.outcome, f.resolved_at, g.kickoff_utc
          FROM forecasts f JOIN games g ON g.game_id = f.game_id
-        WHERE g.season = ? AND g.week = ? AND f.snapshot_kind <> 'manual'`,
+         LEFT JOIN forecast_voids v ON v.forecast_id = f.id
+        WHERE g.season = ? AND g.week = ? AND f.snapshot_kind <> 'manual' AND v.forecast_id IS NULL`,
     )
     .all(season, week) as WeekRow[];
+  const voided = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM forecast_voids v JOIN forecasts f ON f.id = v.forecast_id JOIN games g ON g.game_id = f.game_id
+          WHERE g.season = ? AND g.week = ? AND f.snapshot_kind <> 'manual'`,
+      )
+      .get(season, week) as { n: number }
+  ).n;
 
   const stages = baseStages();
   const nowMs = now.getTime();
@@ -202,7 +211,7 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
   const resolved = rows.filter((x) => x.outcome !== null);
   const allKicked = [...games.values()].every((g) => Date.parse(g.kickoff) <= nowMs);
   stages[3].status = rows.length > 0 && resolved.length === rows.length ? 'done' : resolved.length > 0 ? 'active' : 'pending';
-  stages[3].detail = `${resolved.length} of ${rows.length} rows graded`;
+  stages[3].detail = `${resolved.length} of ${rows.length} rows graded` + (voided > 0 ? ` · ${voided} void (game cancelled or moved)` : '');
 
   // 5. Report: a report file written after the week's last result was filled in.
   const lastResolved = resolved.map((x) => x.resolved_at!).sort().pop();
