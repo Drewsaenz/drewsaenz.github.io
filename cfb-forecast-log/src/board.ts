@@ -128,6 +128,7 @@ const TAG: Record<BoardTag, { label: string; title: string }> = {
 };
 
 export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): string {
+  const hasV2 = b.rows.some((r) => r.v2 !== null);
   const counts = { edge: 0, wide: 0, news: 0, none: 0 };
   for (const r of b.rows) counts[r.tag] += 1;
   const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
@@ -151,14 +152,14 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   return `
 <h2 class="sec">This week's board <span class="small">${esc(source)}</span></h2>
 <section class="card board">
-  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. Hypothetical only.</div>
+  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} Hypothetical only.</div>
   <div class="chips" role="group" aria-label="Filter games">
     <button type="button" class="chip on" data-f="edge">Edge (${counts.edge})</button>
     <button type="button" class="chip" data-f="flagged">Edge + flagged (${counts.edge + counts.wide + counts.news})</button>
     <button type="button" class="chip" data-f="all">All games (${b.rows.length})</button>
   </div>
   <div class="scroll"><table class="bt">
-    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">Model</th><th class="num">Kalshi</th><th class="num">Vegas</th><th></th></tr></thead>
+    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">${hasV2 ? 'Model v2' : 'Model v1'}</th><th class="num">Kalshi</th><th class="num">Vegas</th><th></th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>
   <p class="small empty" hidden>No games pass the filter.</p>
