@@ -1,6 +1,7 @@
 /**
- * "This week's board" for the tracker page: every game in the latest Tuesday
- * (or newer manual) snapshot, the side the model likes, and whether that side
+ * "This week's board" for the tracker page: every game of the current week (the
+ * week of the latest Tuesday snapshot) in the latest Tuesday, report or manual
+ * snapshot — a manual run covers every open market, including later weeks — the side the model likes, and whether that side
  * passes the same filters the report uses. Read-only.
  */
 import type { ScoringConfig } from './config';
@@ -113,9 +114,12 @@ export function collectBoard(db: Db, cfg: ScoringConfig): BoardView | null {
       `SELECT f.game_id, f.ticker, f.model_version, f.my_prob, f.market_mid, f.vegas_prob, f.yes_bid, f.yes_ask, f.outcome,
               m.yes_team, g.home_team, g.away_team, g.kickoff_utc
          FROM forecasts f JOIN markets m ON m.ticker = f.ticker JOIN games g ON g.game_id = f.game_id
-        WHERE f.snapshot_kind = ? AND f.snapshot_utc = ?`,
+        WHERE f.snapshot_kind = ? AND f.snapshot_utc = ?
+          AND g.week = COALESCE(
+            (SELECT MAX(g2.week) FROM forecasts f2 JOIN games g2 ON g2.game_id = f2.game_id WHERE f2.snapshot_kind = 'tuesday'),
+            (SELECT MIN(g3.week) FROM forecasts f3 JOIN games g3 ON g3.game_id = f3.game_id WHERE f3.snapshot_utc = ?))`,
     )
-    .all(latest.kind, latest.snapshot_utc) as Raw[];
+    .all(latest.kind, latest.snapshot_utc, latest.snapshot_utc) as Raw[];
   return { ...latest, rows: buildBoard(raw, qbFlags(db), cfg), edge_min: cfg.edge_min, news_gap_min: cfg.news_gap_min };
 }
 
