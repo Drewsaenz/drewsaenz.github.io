@@ -67,7 +67,8 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
   for (const r of raw) {
     const s = sides.get(r.ticker) ?? { r, v1: null, v2: null };
     if (r.model_version.startsWith('v2')) s.v2 = r.my_prob;
-    else s.v1 = r.my_prob;
+    else if (r.model_version.startsWith('v1')) s.v1 = r.my_prob;
+    // v3 rows are scored in the report but not shown on the board yet.
     sides.set(r.ticker, s);
   }
   // One row per game: the side with the larger model-minus-Kalshi gap.

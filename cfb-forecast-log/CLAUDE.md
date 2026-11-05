@@ -159,6 +159,23 @@ scores the two side by side.
 - `npm run v2:check` previews this week's penalties; `npm run v2:backtest` re-scores
   logged v1 rows as if v2 had run (rough: uses today's starters).
 
+## Model v3 (`src/model/v3.ts`, `model_version = 'v3-anchor'`, approved by Drew 2026-11-05)
+
+Anchored on the Vegas line; v1 only moves it. Logged next to v1 and v2 at every snapshot.
+
+- `logit(p3) = logit(vegas) + lambda * (logit(v1) / temper - logit(vegas))`. No line posted: tempered v1 alone.
+- `temper` undoes v1's fit leak (SP+/FPI/FEI were fit on season-final ratings). Measured on Elo, the
+  only source available both ways: slope on season-final Elo / slope on prior-week Elo. Assumes the
+  other sources leak about as much.
+- `lambda` is fit leave-one-season-out on 2021-2025 with prior-week Elo standing in for the ratings
+  model (leak-free). Conservative, since v1 has more sources than Elo.
+- `npm run v3:fit` runs the backtest and writes `config/model-v3.json`; it refuses once v3 rows exist.
+  `npm run v3:check` re-scores this season's logged v1 rows as v3 (out-of-sample: no 2026 data in the fit).
+- First fit (2026-11-05, 3,461 games): temper 1.243, lambda 0.160. Backtest Brier: line 0.1786,
+  prior-week Elo 0.1893, blend 0.1786. Leak-free ratings added almost nothing over the line historically.
+- v3 does not apply the v2 QB penalty: the line usually prices a known QB absence already.
+- The board (`src/board.ts`) shows v1/v2 only; v3 appears in the report.
+
 ## Jobs (`npm run <name>`)
 
 | Job        | When (America/Chicago)          | Does |

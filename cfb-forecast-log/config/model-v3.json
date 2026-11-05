@@ -1,0 +1,76 @@
+{
+  "model_version": "v3-anchor",
+  "base_model_version": "v1-blend",
+  "fitted_at": "2026-11-05T05:33:34.473Z",
+  "temper": 1.2433,
+  "lambda": 0.1599,
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v3-anchor = the Vegas line, moved toward v1 by lambda of their gap in logit space, after dividing v1's logit by temper to undo the season-final-ratings leak in its fit. Both constants are written by `npm run v3:fit` from 2021-2025 only. Any change after rows are logged is a new model_version.",
+  "fit_summary": {
+    "samples": 3461,
+    "seasons": [
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "elo_slope_prior_week": 0.004240184876044575,
+    "elo_slope_season_final": 0.005271657205523403,
+    "lambda_leave_one_season_out": {
+      "2021": 0.1548,
+      "2022": 0.1533,
+      "2023": 0.2204,
+      "2024": 0.1455,
+      "2025": 0.1232
+    },
+    "scores": {
+      "2021": {
+        "n": 655,
+        "line_brier": 0.17789095849511571,
+        "elo_brier": 0.1875559706746106,
+        "blend_brier": 0.17795748335779588,
+        "v1_in_sample_brier": 0.15183286272970556
+      },
+      "2022": {
+        "n": 681,
+        "line_brier": 0.1900826534604586,
+        "elo_brier": 0.2019954104709916,
+        "blend_brier": 0.19055960042547973,
+        "v1_in_sample_brier": 0.16298970456861053
+      },
+      "2023": {
+        "n": 698,
+        "line_brier": 0.16788272500165516,
+        "elo_brier": 0.18331860752206297,
+        "blend_brier": 0.1687031544366459,
+        "v1_in_sample_brier": 0.14344266240725692
+      },
+      "2024": {
+        "n": 713,
+        "line_brier": 0.18160338548918337,
+        "elo_brier": 0.1920286347311184,
+        "blend_brier": 0.18118271591380677,
+        "v1_in_sample_brier": 0.1546670442154812
+      },
+      "2025": {
+        "n": 714,
+        "line_brier": 0.17584415314982127,
+        "elo_brier": 0.1819039275730886,
+        "blend_brier": 0.17510484475067267,
+        "v1_in_sample_brier": 0.14347946874718254
+      },
+      "all": {
+        "n": 3461,
+        "line_brier": 0.1786139688167529,
+        "elo_brier": 0.1892979613474394,
+        "blend_brier": 0.17864668502872352,
+        "v1_in_sample_brier": 0.15119660082940609
+      }
+    },
+    "note": "lambda is fit with prior-week Elo as the ratings model (leak-free); v1 is richer, so this weight is conservative. temper assumes SP+/FPI/FEI leak about as much as Elo does."
+  }
+}

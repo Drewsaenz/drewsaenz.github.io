@@ -120,8 +120,12 @@ export class CfbdClient {
     }));
   }
 
-  async lines(season: number, week: number): Promise<GameLines[]> {
-    const raw = await this.get('/lines', { year: season, week, seasonType: this.cfg.season_type }, CfbdLines, this.cfg.cache_ttl_hours.lines);
+  /** Lines for one week, or the whole season when `week` is omitted (one call; used by the v3 backtest). */
+  async lines(season: number, week?: number, historical = false): Promise<GameLines[]> {
+    const params: Record<string, string | number> = { year: season, seasonType: this.cfg.season_type };
+    if (week !== undefined) params.week = week;
+    const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.lines;
+    const raw = await this.get('/lines', params, CfbdLines, ttl);
     return raw.map((g) => {
       const pick = pickLine(g.lines, this.cfg.line_provider_priority);
       return { game_id: g.id, spread: pick?.spread ?? null, provider: pick?.provider ?? null };

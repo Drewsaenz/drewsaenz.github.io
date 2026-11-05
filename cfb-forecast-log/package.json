@@ -21,6 +21,8 @@
     "news:report": "tsx scripts/news.ts report",
     "v2:check": "tsx scripts/v2.ts check",
     "v2:backtest": "tsx scripts/v2.ts backtest",
+    "v3:fit": "tsx scripts/v3.ts fit",
+    "v3:check": "tsx scripts/v3.ts check",
     "fit": "tsx scripts/fit.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",
