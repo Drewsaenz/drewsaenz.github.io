@@ -15,3 +15,6 @@ PATH=/opt/homebrew/bin:/usr/bin:/bin
 # News facts from transcripts/articles (after TranscriptGPT's :17 and :47 pulls). Needs ANTHROPIC_API_KEY in .env.
 45 * * * *         cd $PROJECT && npm run -s news:extract -- --model claude-haiku-5-5 >> data/jobs.log 2>&1
 
+# Official availability reports saved by TranscriptGPT's availability.js (:20/:50) -> facts, 5 min before pregame snapshots. No API cost.
+25,55 17-23 * * 3-5  cd $PROJECT && npm run -s news:availability  >> data/jobs.log 2>&1
+25,55 7-21 * * 6     cd $PROJECT && npm run -s news:availability  >> data/jobs.log 2>&1

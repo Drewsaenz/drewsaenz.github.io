@@ -6,6 +6,7 @@
  *   npm run news:report  -- [--days 10]
  *   npm run news:restamp -- [--dir data/transcripts]
  *   npm run news:players -- [--dry-run]   resolve stored player names to roster names
+ *   npm run news:availability -- [--dir data/availability]   official reports saved by TranscriptGPT -> facts
  *
  * restamp: after the scraper backfills `published:` into transcripts that were
  *          extracted while only `saved:` existed, move each stored fact's as_of
@@ -34,6 +35,9 @@ import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
 import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews } from '../src/news';
 import { canonicalPlayer, indexRoster, type RosterIndex } from '../src/players';
+import { AvailabilityFileSchema, teamReportFacts } from '../src/availability';
+import { sameName } from '../src/model/v2';
+import { resolveTeam } from '../src/teams';
 import { seasonFor } from '../src/season';
 import { CfbdClient } from '../src/sources/cfbd';
 
@@ -217,6 +221,77 @@ if (cmd === 'extract') {
     const res = restampFacts(db, files);
     log.info(`restamped ${res.moved} fact(s) across ${res.transcripts} transcript(s); ${res.unchanged} transcript(s) unchanged; ${res.noDate} still without a publish date`);
   });
+} else if (cmd === 'availability') {
+  // Official availability reports saved by TranscriptGPT's availability.js
+  // (data/availability/<source>/*.json) -> facts at confidence 1.0. No API
+  // calls besides the cached roster. Each team's report is stored once, keyed
+  // by its posting time, so re-runs and unchanged re-fetches are no-ops.
+  runJob('news:availability', async () => {
+    loadEnv();
+    const dir = path.resolve(arg('dir', path.join(DATA_DIR, 'availability'))!);
+    const db = openDb();
+    const aliases = loadAliases();
+    const season = seasonFor(new Date());
+    const canonical = teamsInSeason(db, season);
+    const kalshiPlusNews = { ...aliases.kalshi, ...(aliases.news ?? {}) };
+    const files: string[] = [];
+    const walk = (d: string) => {
+      if (!fs.existsSync(d)) return;
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith('.json')) files.push(p);
+      }
+    };
+    walk(dir);
+    files.sort();
+    if (files.length === 0) {
+      log.info(`no availability reports under ${dir}`);
+      return;
+    }
+    const roster = await loadRoster(season);
+    // An "Available" row is stored only when it clears a recent non-available fact.
+    const recentlyOut = db.prepare(
+      `SELECT player FROM news_facts WHERE team = ? AND player IS NOT NULL AND status NOT IN ('available', 'unknown') AND as_of <= ? AND as_of >= ?`,
+    );
+    let stored = 0;
+    let teams = 0;
+    let skipped = 0;
+    for (const file of files) {
+      const parsed = AvailabilityFileSchema.safeParse(JSON.parse(fs.readFileSync(file, 'utf8')));
+      if (!parsed.success) throw new Error(`${path.basename(file)}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+      const rep = parsed.data;
+      for (const g of rep.games) {
+        for (const t of g.teams) {
+          const teamCanon = resolveTeam(t.team, kalshiPlusNews);
+          const team = canonical.has(teamCanon) ? teamCanon : null;
+          const probe = teamReportFacts(rep.source, rep.page, g, t, () => false);
+          if (!probe) continue;
+          const since = new Date(Date.parse(probe.as_of) - 21 * 86_400_000).toISOString();
+          const outNames = team ? (recentlyOut.all(team, probe.as_of, since) as { player: string }[]).map((r) => r.player) : [];
+          const keepAvailable = (name: string) => {
+            const canon = team ? canonicalPlayer(roster, team, name, null) ?? name : name;
+            return outNames.some((n) => n === canon || n === name || sameName(n, name));
+          };
+          const tr = teamReportFacts(rep.source, rep.page, g, t, keepAvailable)!;
+          const hash = sha1(JSON.stringify({ g: [g.report_type, g.publish_date, g.posted_time], rows: t.rows }));
+          if (alreadyProcessed(db, tr.url, hash)) {
+            skipped += 1;
+            continue;
+          }
+          const meta = { title: tr.title, channel: tr.channel, url: tr.url, video_id: null, as_of: tr.as_of, as_of_source: 'published' as const, duration_sec: null };
+          const facts = resolveFactPlayers(resolveFactTeams(tr.facts, kalshiPlusNews, canonical), roster);
+          const n = storeFacts(db, meta, facts, { file, sha1: hash, windows: t.rows.length, input_tokens: 0, output_tokens: 0, model: 'availability-report' });
+          if (!team) log.warn(`  ${t.team}: not a ${season} team name; add it to the "news" aliases in config/team-aliases.json`);
+          const qbs = facts.filter((f) => f.position === 'QB' && f.status !== 'available').map((f) => `${f.player} ${f.status}`);
+          log.info(`${rep.source} ${g.report_type} ${g.publish_date} ${g.posted_time}: ${team ?? t.team} ${n} fact(s)${qbs.length ? ` (QB: ${qbs.join(', ')})` : ''}`);
+          stored += n;
+          teams += 1;
+        }
+      }
+    }
+    log.info(`availability: ${stored} fact(s) from ${teams} team report(s); ${skipped} already stored`);
+  });
 } else if (cmd === 'players') {
   // One-time (and safe to re-run) cleanup: resolve every stored player name
   // against the roster. Where the new name collides with a fact already stored
@@ -276,6 +351,6 @@ if (cmd === 'extract') {
     }
   });
 } else {
-  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|players|report> [options]');
+  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|players|availability|report> [options]');
   process.exit(2);
 }

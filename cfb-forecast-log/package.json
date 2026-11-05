@@ -19,6 +19,7 @@
     "news:import": "tsx scripts/news.ts import",
     "news:restamp": "tsx scripts/news.ts restamp",
     "news:players": "tsx scripts/news.ts players",
+    "news:availability": "tsx scripts/news.ts availability",
     "news:report": "tsx scripts/news.ts report",
     "v2:check": "tsx scripts/v2.ts check",
     "v2:backtest": "tsx scripts/v2.ts backtest",
