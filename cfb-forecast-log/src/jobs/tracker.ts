@@ -13,6 +13,7 @@ import { DATA_DIR, REPORTS_DIR } from '../paths';
 import { collectBoard } from '../board';
 import { collectResults } from '../results';
 import { collectState, latestReport, renderTracker } from '../tracker';
+import { collectSources } from '../sources-view';
 
 runJob('tracker', async () => {
   loadEnv();
@@ -23,6 +24,7 @@ runJob('tracker', async () => {
   const state = collectState(db, new Date(), logText, latestReport(REPORTS_DIR));
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
   const out = path.join(REPORTS_DIR, 'tracker.html');
-  fs.writeFileSync(out, renderTracker(state, collectResults(db, scoring), collectBoard(db, scoring)));
+  const sources = collectSources(db, path.join(DATA_DIR, 'transcripts'), path.join(DATA_DIR, 'availability'));
+  fs.writeFileSync(out, renderTracker(state, collectResults(db, scoring), collectBoard(db, scoring), sources));
   console.log(`${state.headline}\nwrote ${out}`);
 });

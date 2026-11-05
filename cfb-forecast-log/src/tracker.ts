@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { Db } from './db';
 import { BOARD_CSS, BOARD_JS, renderBoard, type BoardView } from './board';
 import { RESULTS_CSS, RESULTS_JS, renderResults, type ResultsView } from './results';
+import { SOURCES_CSS, renderSources, type SourcesView } from './sources-view';
 
 const TZ = 'America/Chicago';
 export const SEASON_TARGET_WEEKS = 8;
@@ -249,7 +250,7 @@ function baseStages(): Stage[] {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-export function renderTracker(s: TrackerState, results: ResultsView | null = null, board: BoardView | null = null): string {
+export function renderTracker(s: TrackerState, results: ResultsView | null = null, board: BoardView | null = null, sources: SourcesView | null = null): string {
   const icon: Record<StageStatus, string> = { done: '✓', active: '●', pending: '', failed: '!' };
   const word: Record<StageStatus, string> = { done: 'Done', active: 'In progress', pending: 'Up next', failed: 'Failed' };
   const SHORT: Record<string, string> = { ratings: 'Ratings', tuesday: 'Picks', pregame: 'Pregame', results: 'Graded', report: 'Report' };
@@ -304,6 +305,7 @@ h1{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:500}td.bad{color:var(--bad);font-weight:600}
 ${RESULTS_CSS}
 ${BOARD_CSS}
+${SOURCES_CSS}
 </style></head>
 <body><main>
 <h1>${esc(title)}</h1>
@@ -318,6 +320,7 @@ ${warnings}
 </section>
 ${board && board.rows.length ? renderBoard(board, shortTime) : ''}
 ${results ? renderResults(results) : ''}
+${sources && sources.totals.items ? renderSources(sources, shortTime) : ''}
 <section class="card">
   <div class="label" style="margin-bottom:6px">Last job runs</div>
   <table><thead><tr><th>Job</th><th>Last success</th><th>Last failure</th></tr></thead><tbody>${jobs}</tbody></table>
