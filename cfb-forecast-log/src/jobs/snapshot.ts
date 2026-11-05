@@ -1,6 +1,9 @@
 /**
- * Job: snapshot <tuesday|pregame|manual>
+ * Job: snapshot <tuesday|report|pregame|manual>
  *   tuesday : Tue 07:00 — one row per open Kalshi market for this week's games.
+ *   report  : Wed evening, after the SEC's initial availability report is ingested —
+ *             the same markets again, to measure whether Kalshi lags official news.
+ *             Skips (writes nothing) unless a report was stored in the last 24 h.
  *   pregame : every 30 min Thu-Sat — rows for games kicking off within 90 min.
  *   manual  : ad hoc; rows are excluded from scoring and may repeat.
  * Everything is validated first; rows are written in one transaction.
@@ -12,6 +15,8 @@ import { log, runJob } from '../log';
 import { assertFitted, homeIndicator, predictV1, vegasProb } from '../model/v1';
 import { adjustForQb, loadModelV2Config, starterStatus, startersFromAttempts } from '../model/v2';
 import { assertV3Fitted, loadModelV3Config, predictV3 } from '../model/v3';
+import { loadModelV4Config, predictV4, type TeamAdjustment } from '../model/v4';
+import { adjustmentFor, describe, loadV4Inputs } from '../model/v4-inputs';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
 import { seasonContext } from './context';
@@ -36,11 +41,24 @@ runJob(`snapshot:${kind}`, async () => {
   if (v3.base_model_version !== model.model_version) {
     throw new Error(`config/model-v3.json builds on ${v3.base_model_version} but model-v1.json is ${model.model_version}`);
   }
+  const v4 = loadModelV4Config();
+  if (v4.base_model_version !== model.model_version) {
+    throw new Error(`config/model-v4.json builds on ${v4.base_model_version} but model-v1.json is ${model.model_version}`);
+  }
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
 
   const db = openDb();
+  if (kind === 'report') {
+    const since = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+    const rep = db.prepare(`SELECT MAX(as_of) AS at FROM news_facts WHERE model = 'availability-report' AND as_of >= ?`).get(since) as { at: string | null };
+    if (!rep.at) {
+      log.info('no official availability report stored in the last 24 h; nothing to snapshot');
+      return;
+    }
+    log.info(`latest official availability report posted ${rep.at}`);
+  }
   const ratings = loadRatings(db, season, week);
   if (ratings.size === 0) throw new Error(`no ratings stored for season ${season} week ${week}; run \`npm run ratings\` first`);
 
@@ -54,7 +72,7 @@ runJob(`snapshot:${kind}`, async () => {
   const selected = mapped.filter(({ game }) => {
     const kick = Date.parse(game.kickoff_utc);
     if (kick <= now.getTime()) return false;
-    if (kind === 'tuesday') return game.week === week;
+    if (kind === 'tuesday' || kind === 'report') return game.week === week;
     if (kind === 'pregame') return kick - now.getTime() <= PREGAME_WINDOW_MS;
     return true;
   });
@@ -69,6 +87,13 @@ runJob(`snapshot:${kind}`, async () => {
   // v2 inputs: each team's starting QB (season pass-attempt leader). Fetched
   // before anything is written, so a failure here writes nothing (hard rule 5).
   const starters = selected.length > 0 ? startersFromAttempts(await cfbd.passAttempts(season), v2.qb.min_starter_share) : new Map();
+  const v4Starters = selected.length > 0 ? startersFromAttempts(await cfbd.passAttempts(season), v4.qb.min_starter_share) : new Map();
+  const v4Inputs = selected.length > 0 ? await loadV4Inputs(cfbd, v4, season, week) : null;
+  const adj = new Map<string, TeamAdjustment>();
+  const adjFor = (team: string, at: string) => {
+    if (!adj.has(team)) adj.set(team, adjustmentFor(db, v4, v4Inputs!, v4Starters, team, at));
+    return adj.get(team)!;
+  };
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
@@ -107,9 +132,14 @@ runJob(`snapshot:${kind}`, async () => {
     rows.push({ ...v1Row, model_version: v2.model_version, my_prob: q.prob });
     const p3 = predictV3(v3, pred.prob, v1Row.vegas_prob);
     rows.push({ ...v1Row, model_version: v3.model_version, my_prob: p3 });
+    const ay = adjFor(m.yes_team, snapshot_utc);
+    const ao = adjFor(opponent, snapshot_utc);
+    const p4 = predictV4(v4, pred.prob, ay, ao);
+    rows.push({ ...v1Row, model_version: v4.model_version, my_prob: p4 });
+    if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }
@@ -117,7 +147,7 @@ runJob(`snapshot:${kind}`, async () => {
   // A market snapshot without market prices is useless for scoring. If most
   // selected markets came back unquoted, the Kalshi response shape has
   // probably changed: fail loud rather than log rows with no comparison.
-  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1, v2 and v3 rows share quotes, so the ratio is unchanged
+  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1-v4 rows share quotes, so the ratio is unchanged
   if (rows.length > 0 && quoted * 2 < rows.length) {
     throw new Error(`only ${quoted} of ${rows.length} markets have a Kalshi bid/ask; refusing to write a snapshot without market prices`);
   }

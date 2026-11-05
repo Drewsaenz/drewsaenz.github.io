@@ -55,7 +55,7 @@ const CfbdFpi = z.array(z.object({ year: z.number().int(), team: z.string(), fpi
 const CfbdRoster = z.array(
   z.object({ team: z.string(), firstName: z.string().nullable().optional(), lastName: z.string().nullable().optional(), position: z.string().nullable().optional() }),
 );
-const CfbdPlayerStats =z.array(z.object({ player: z.string(), team: z.string(), statType: z.string(), stat: z.coerce.number() }));
+const CfbdPlayerStats = z.array(z.object({ player: z.string(), team: z.string(), position: z.string().nullable().optional(), statType: z.string(), stat: z.coerce.number() }));
 
 export interface GameLines {
   game_id: number;
@@ -155,6 +155,20 @@ export class CfbdClient {
       throw new Error(`CFBD /stats/player/season returned ${raw.length} passing rows but none with statType ATT; the response shape has changed`);
     }
     return rows.map((r) => ({ team: r.team, player: r.player, attempts: r.stat }));
+  }
+
+  /**
+   * Season player stats for one category (rushing, receiving, defensive, passing),
+   * optionally limited to a week range. One call for every team; cached like ratings.
+   */
+  async playerStats(season: number, category: string, weeks?: { start: number; end: number }): Promise<{ player: string; team: string; position: string | null; statType: string; stat: number }[]> {
+    const params: Record<string, string | number> = { year: season, category, seasonType: this.cfg.season_type };
+    if (weeks) {
+      params.startWeek = weeks.start;
+      params.endWeek = weeks.end;
+    }
+    const raw = await this.get('/stats/player/season', params, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings);
+    return raw.map((r) => ({ player: r.player, team: r.team, position: r.position ?? null, statType: r.statType.toUpperCase(), stat: r.stat }));
   }
 
   /** Every team's roster for a season (one call, ~30k players; cached like ratings). */

@@ -1,0 +1,37 @@
+{
+  "model_version": "v4-avail",
+  "base_model_version": "v1-blend",
+  "created_at": "2026-11-05",
+  "points_to_logit": 0.14105,
+  "status_weights": {
+    "out": 1,
+    "doubtful": 0.75,
+    "limited": 0.5,
+    "questionable": 0.35,
+    "probable": 0.1,
+    "available": 0,
+    "returning": 0
+  },
+  "lookback_days": 8,
+  "min_confidence": 0.5,
+  "qb": {
+    "points": 6,
+    "min_starter_share": 0.4,
+    "weeks_checked": 3,
+    "fade_per_missed_week": 0.25,
+    "min_fade": 0.25
+  },
+  "rb_points": 3,
+  "receiver_points": 4,
+  "defense_points": 8,
+  "ol_points_each": 0.6,
+  "ol_cap": 2,
+  "non_qb_cap": 6,
+  "coach": {
+    "window_days": 21,
+    "head_coach_change_points": 1,
+    "coordinator_change_points": 0
+  },
+  "clamp": [0.02, 0.98],
+  "_note": "v4-avail = v1-blend, then a logit shift of points_to_logit per point of spread each team has lost to unavailable players and recent coaching changes (see src/model/v4.ts). Every number here is a prior, not a fit: no history of availability reports exists to fit on. Scale check: a lead back with 45% of rushing yards = 1.35 pts; a WR1 with 30% of receiving yards = 1.2; a defender with 12% of defensive impact = 1.0; a starting QB = 6, fading 25% per straight week already missed. Coordinator changes are tracked and shown but weighted 0 until there is evidence. Any change after v4 rows exist is a new model_version (v4.1-avail)."
+}

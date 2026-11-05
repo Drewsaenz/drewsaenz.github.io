@@ -1,8 +1,8 @@
 export type Source = 'sp' | 'elo' | 'fpi' | 'fei';
 export const SOURCES: Source[] = ['sp', 'elo', 'fpi', 'fei'];
 
-export type SnapshotKind = 'tuesday' | 'pregame' | 'manual';
-export const SNAPSHOT_KINDS: SnapshotKind[] = ['tuesday', 'pregame', 'manual'];
+export type SnapshotKind = 'tuesday' | 'report' | 'pregame' | 'manual';
+export const SNAPSHOT_KINDS: SnapshotKind[] = ['tuesday', 'report', 'pregame', 'manual'];
 
 export interface GameRow {
   game_id: number;

@@ -18,3 +18,5 @@ PATH=/opt/homebrew/bin:/usr/bin:/bin
 # Official availability reports saved by TranscriptGPT's availability.js (:20/:50) -> facts, 5 min before pregame snapshots. No API cost.
 25,55 17-23 * * 3-5  cd $PROJECT && npm run -s news:availability  >> data/jobs.log 2>&1
 25,55 7-21 * * 6     cd $PROJECT && npm run -s news:availability  >> data/jobs.log 2>&1
+# Re-price this week's markets after the SEC's Wednesday initial availability report (tests whether Kalshi lags the news).
+40 19-21 * * 3       cd $PROJECT && npm run -s snapshot:report     >> data/jobs.log 2>&1

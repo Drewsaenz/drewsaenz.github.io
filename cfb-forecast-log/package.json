@@ -9,6 +9,7 @@
   "scripts": {
     "ratings": "tsx src/jobs/ratings.ts",
     "snapshot:tuesday": "tsx src/jobs/snapshot.ts tuesday",
+    "snapshot:report": "tsx src/jobs/snapshot.ts report",
     "snapshot:pregame": "tsx src/jobs/snapshot.ts pregame",
     "snapshot:manual": "tsx src/jobs/snapshot.ts manual",
     "resolve": "tsx src/jobs/resolve.ts",
@@ -25,6 +26,7 @@
     "v2:backtest": "tsx scripts/v2.ts backtest",
     "v3:fit": "tsx scripts/v3.ts fit",
     "v3:check": "tsx scripts/v3.ts check",
+    "v4:check": "tsx scripts/v4.ts",
     "fit": "tsx scripts/fit.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",

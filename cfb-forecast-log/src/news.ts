@@ -123,7 +123,7 @@ export interface Window {
 }
 
 export const AVAILABILITY_RE =
-  /\b(injur\w*|out for|ruled out|questionable|doubtful|probable|suspend\w*|sling|walking boot|surgery|concussion|won'?t play|will not play|not going to play|expected to (play|start)|expected back|good to go|game[- ]time decision|backup (quarterback|qb)|third[- ]string|starting (quarterback|qb|lineup)|depth chart|practiced|did not practice|didn'?t practice|limited|returning|back from|availability report|injury report|knocked out|left the game|did not return|didn'?t return|season[- ]ending|out for the (season|year)|out indefinitely|(will|could|may|might) miss|miss(ed|ing)? (the|this|a|another|some) (game|time|week)|day[- ]to[- ]day|week[- ]to[- ]week|banged up|hurt|bandag\w*|brace|cast|crutch\w*|bleed\w*|sore|tweak\w*|trending (toward|towards|in the right)|pitch count|street clothes|not 100|cleared|full go|full participant)\b/i;
+  /\b(injur\w*|out for|ruled out|questionable|doubtful|probable|suspend\w*|sling|walking boot|surgery|concussion|won'?t play|will not play|not going to play|expected to (play|start)|expected back|good to go|game[- ]time decision|backup (quarterback|qb)|third[- ]string|starting (quarterback|qb|lineup)|depth chart|practiced|did not practice|didn'?t practice|limited|returning|back from|availability report|injury report|knocked out|left the game|did not return|didn'?t return|season[- ]ending|out for the (season|year)|out indefinitely|(will|could|may|might) miss|miss(ed|ing)? (the|this|a|another|some) (game|time|week)|day[- ]to[- ]day|week[- ]to[- ]week|banged up|hurt|bandag\w*|brace|cast|crutch\w*|bleed\w*|sore|tweak\w*|trending (toward|towards|in the right)|pitch count|street clothes|not 100|cleared|full go|full participant|fired|dismissed|let go|parted ways|interim|offensive coordinator|defensive coordinator|play-?call\w*|new (oc|dc))\b/i;
 
 export function windows(lines: TranscriptLine[], size = 40, stride = 30): Window[] {
   const out: Window[] = [];
@@ -175,6 +175,8 @@ const FactsSchema = z.object({ facts: z.array(FactSchema) });
 const SYSTEM = `You extract player and coach AVAILABILITY FACTS from auto-generated transcripts of college football podcasts.
 
 Return only statements about whether a specific player, coach, or position group will or will not be available for a game: injuries, suspensions, depth-chart changes, who is starting, who returned, who left a game and did not come back, official availability-report designations (out, doubtful, questionable, probable).
+
+Also return coaching staff changes as facts with position "coach": a head coach, coordinator or play-caller fired, resigned, suspended or reassigned (status "out", scope "season" unless stated otherwise), and whoever replaces them, including interim coaches and a new play-caller (status "available"). Start the detail with the role, e.g. "Offensive coordinator ... was fired" or "Interim head coach ... will coach Saturday".
 
 Rules:
 - Facts only. Ignore predictions, picks, opinions about how good a player is, recruiting news, and anything about past seasons.

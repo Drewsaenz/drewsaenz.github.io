@@ -19,6 +19,7 @@ export interface BoardRow {
   kickoff_utc: string;
   v1: number | null;
   v2: number | null;
+  v4: number | null;
   model: number;
   kalshi: number;
   vegas: number | null;
@@ -63,19 +64,20 @@ export function tagFor(edge: number, model: number, vegas: number | null, bid: n
 
 export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: ScoringConfig): BoardRow[] {
   // ticker -> { v1, v2, ... }
-  const sides = new Map<string, { r: Raw; v1: number | null; v2: number | null }>();
+  const sides = new Map<string, { r: Raw; v1: number | null; v2: number | null; v4: number | null }>();
   for (const r of raw) {
-    const s = sides.get(r.ticker) ?? { r, v1: null, v2: null };
-    if (r.model_version.startsWith('v2')) s.v2 = r.my_prob;
+    const s = sides.get(r.ticker) ?? { r, v1: null, v2: null, v4: null };
+    if (r.model_version.startsWith('v4')) s.v4 = r.my_prob;
+    else if (r.model_version.startsWith('v2')) s.v2 = r.my_prob;
     else if (r.model_version.startsWith('v1')) s.v1 = r.my_prob;
-    // v3 rows are scored in the report but not shown on the board yet.
+    // v3 rows are scored in the report but not shown on the board.
     sides.set(r.ticker, s);
   }
   // One row per game: the side with the larger model-minus-Kalshi gap.
   const best = new Map<number, BoardRow>();
-  for (const { r, v1, v2 } of sides.values()) {
+  for (const { r, v1, v2, v4 } of sides.values()) {
     if (r.market_mid === null) continue;
-    const model = v2 ?? v1!;
+    const model = v4 ?? v2 ?? v1!;
     const edge = model - r.market_mid;
     const row: BoardRow = {
       game_id: r.game_id,
@@ -84,6 +86,7 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
       kickoff_utc: r.kickoff_utc,
       v1,
       v2,
+      v4,
       model,
       kalshi: r.market_mid,
       vegas: r.vegas_prob,
@@ -102,7 +105,7 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
 
 export function collectBoard(db: Db, cfg: ScoringConfig): BoardView | null {
   const latest = db
-    .prepare(`SELECT snapshot_kind AS kind, snapshot_utc FROM forecasts WHERE snapshot_kind IN ('tuesday','manual') ORDER BY snapshot_utc DESC LIMIT 1`)
+    .prepare(`SELECT snapshot_kind AS kind, snapshot_utc FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual') ORDER BY snapshot_utc DESC LIMIT 1`)
     .get() as { kind: string; snapshot_utc: string } | undefined;
   if (!latest) return null;
   const raw = db
@@ -130,12 +133,14 @@ const TAG: Record<BoardTag, { label: string; title: string }> = {
 
 export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): string {
   const hasV2 = b.rows.some((r) => r.v2 !== null);
+  const hasV4 = b.rows.some((r) => r.v4 !== null);
+  const modelLabel = hasV4 ? 'Model v4' : hasV2 ? 'Model v2' : 'Model v1';
   const counts = { edge: 0, wide: 0, news: 0, none: 0 };
   for (const r of b.rows) counts[r.tag] += 1;
-  const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
+  const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : b.kind === 'report' ? `After the official availability report, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
   const body = b.rows
     .map((r) => {
-      const v1note = r.v2 !== null && r.v1 !== null && Math.abs(r.v2 - r.v1) >= 0.005 ? `<div class="sub" title="v1 before the QB adjustment">v1 ${p2(r.v1)}</div>` : '';
+      const v1note = r.v1 !== null && Math.abs(r.model - r.v1) >= 0.005 ? `<div class="sub" title="v1, the ratings alone, before the availability adjustment">v1 ${p2(r.v1)}</div>` : '';
       const qb = r.qb.length ? `<div class="sub qb">${esc(r.qb.join('; '))}</div>` : '';
       const result = r.outcome === null ? '' : `<span class="res ${r.outcome ? 'won' : 'lost'}">${r.outcome ? 'Won' : 'Lost'}</span>`;
       const tag = r.tag === 'none' ? '' : `<span class="tag ${r.tag}" title="${esc(TAG[r.tag].title)}">${TAG[r.tag].label}</span>`;
@@ -153,14 +158,14 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   return `
 <h2 class="sec">This week's board <span class="small">${esc(source)}</span></h2>
 <section class="card board">
-  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} Hypothetical only.</div>
+  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV4 ? ' Model is v4: the v1 ratings adjusted for each team\'s injuries and coaching changes. Where that changed the number, v1 shows underneath.' : hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} Hypothetical only.</div>
   <div class="chips" role="group" aria-label="Filter games">
     <button type="button" class="chip on" data-f="edge">Edge (${counts.edge})</button>
     <button type="button" class="chip" data-f="flagged">Edge + flagged (${counts.edge + counts.wide + counts.news})</button>
     <button type="button" class="chip" data-f="all">All games (${b.rows.length})</button>
   </div>
   <div class="scroll"><table class="bt">
-    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">${hasV2 ? 'Model v2' : 'Model v1'}</th><th class="num">Kalshi</th><th class="num">Vegas</th><th></th></tr></thead>
+    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">${modelLabel}</th><th class="num">Kalshi</th><th class="num">Vegas</th><th></th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>
   <p class="small empty" hidden>No games pass the filter.</p>

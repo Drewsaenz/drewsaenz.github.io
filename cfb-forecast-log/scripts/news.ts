@@ -1,6 +1,6 @@
 /**
  * News pipeline CLI.
- *   npm run news:extract -- [--dir data/transcripts] [--dry-run] [--limit N] [--model id]
+ *   npm run news:extract -- [--dir data/transcripts] [--dry-run] [--limit N] [--model id] [--match regex] [--force]
  *   npm run news:windows -- [--dir data/transcripts] [--out data/news-work]
  *   npm run news:import  -- --in data/news-work [--model manual]
  *   npm run news:report  -- [--days 10]
@@ -62,6 +62,10 @@ if (cmd === 'extract') {
     const dir = path.resolve(arg('dir', path.join(DATA_DIR, 'transcripts'))!);
     const dryRun = flag('dry-run');
     const limit = Number(arg('limit', '0'));
+    // --match <regex>: only transcripts whose title matches. --force: re-extract even if already processed
+    // (facts already stored are not duplicated: INSERT OR IGNORE on the same source/player/status).
+    const match = arg('match') ? new RegExp(arg('match')!, 'i') : null;
+    const force = flag('force');
     const model = arg('model', NEWS_MODEL)!;
     const db = openDb();
     const aliases = loadAliases();
@@ -92,7 +96,8 @@ if (cmd === 'extract') {
         log.warn(`skip ${path.basename(file)}: no date in front matter`);
         continue;
       }
-      if (alreadyProcessed(db, t.meta.url, hash)) {
+      if (match && !match.test(t.meta.title)) continue;
+      if (!force && alreadyProcessed(db, t.meta.url, hash)) {
         skipped += 1;
         continue;
       }

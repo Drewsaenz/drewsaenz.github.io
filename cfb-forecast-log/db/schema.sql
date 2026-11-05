@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS forecasts (
   id              INTEGER PRIMARY KEY,
   game_id         INTEGER NOT NULL REFERENCES games(game_id),
   ticker          TEXT REFERENCES markets(ticker),
-  snapshot_kind   TEXT NOT NULL,      -- 'tuesday' | 'pregame' | 'manual'
+  snapshot_kind   TEXT NOT NULL,      -- 'tuesday' | 'report' | 'pregame' | 'manual'
   snapshot_utc    TEXT NOT NULL,
   model_version   TEXT NOT NULL,
   my_prob         REAL NOT NULL,      -- P(yes_team wins)

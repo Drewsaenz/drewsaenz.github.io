@@ -176,6 +176,34 @@ Anchored on the Vegas line; v1 only moves it. Logged next to v1 and v2 at every 
 - v3 does not apply the v2 QB penalty: the line usually prices a known QB absence already.
 - The board (`src/board.ts`) shows v1/v2 only; v3 appears in the report.
 
+## Model v4 (`src/model/v4.ts`, `model_version = 'v4-avail'`, approved by Drew 2026-11-05)
+
+v1-blend ratings, adjusted for who is actually available on both teams and for recent coaching changes.
+Logged next to v1-v3 at every snapshot; the board shows v4 as "the model" when its rows exist.
+
+- `logit(p4) = logit(v1) + points_to_logit * (lost(opponent) - lost(yes team))`, lost = points of spread.
+- Per player, the latest fact (official availability report, article or show; confidence >= 0.5, last 8
+  days, or season-long) weighted by status (out 1, doubtful .75, limited .5, questionable .35, probable .1):
+  starting QB (season pass-attempt leader) 6 pts, faded 25% per straight week already missed (the ratings
+  have partly absorbed it; fixes the UCLA/Iamaleava double count); RB 3 x share of team rushing yards;
+  WR/TE 4 x share of receiving yards; defenders 8 x share of team defensive impact (tackles + 2 TFL +
+  3 sacks + 2 PD); OL 0.6 each, capped at 2; non-QB total capped at 6. Shares come from CFBD season stats.
+- Coaching: a head-coach change in the last 21 days costs 1 pt; coordinator changes are detected and
+  listed but weighted 0 until there is evidence. Roles are read from the fact wording (the extraction
+  prompt asks for the role first, e.g. "Offensive coordinator X was fired").
+- Every number is a prior (`config/model-v4.json`); there is no availability history to fit on yet.
+  Changing one after v4 rows exist is a new model_version.
+- v4 is not anchored to Vegas (that is v3). The question v4 answers: does knowing who plays beat the
+  market before the market has priced it? The `report` snapshot is how that gets measured.
+- `npm run v4:check [-- --all]` shows this week's games where v4 moves v1, with every player and points.
+
+### `report` snapshot (Wednesday evening)
+
+`npm run snapshot:report`: the same markets as Tuesday, re-priced after the SEC's initial availability report
+is ingested (cron 19:40-21:40 CT Wednesday; first run after the report writes, later runs are no-ops via the
+unique index). Writes nothing unless an official report was stored in the last 24 hours. Comparing Tuesday ->
+report -> pregame Kalshi moves against v4 shows whether Kalshi lags official news.
+
 ## Jobs (`npm run <name>`)
 
 | Job        | When (America/Chicago)          | Does |
