@@ -5,6 +5,7 @@
  *   npm run news:import  -- --in data/news-work [--model manual]
  *   npm run news:report  -- [--days 10]
  *   npm run news:restamp -- [--dir data/transcripts]
+ *   npm run news:players -- [--dry-run]   resolve stored player names to roster names
  *
  * restamp: after the scraper backfills `published:` into transcripts that were
  *          extracted while only `saved:` existed, move each stored fact's as_of
@@ -27,12 +28,21 @@ import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { loadAliases } from '../src/config';
 import { openDb, teamsInSeason } from '../src/db';
-import { loadEnv } from '../src/env';
+import { loadEnv, requireEnv } from '../src/env';
 import { log, runJob } from '../src/log';
 import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
-import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews } from '../src/news';
+import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews } from '../src/news';
+import { canonicalPlayer, indexRoster, type RosterIndex } from '../src/players';
 import { seasonFor } from '../src/season';
+import { CfbdClient } from '../src/sources/cfbd';
+
+/** The season's rosters, for resolving spoken player names (one cached CFBD call). */
+async function loadRoster(season: number): Promise<RosterIndex> {
+  const rows = await new CfbdClient(requireEnv('CFBD_API_KEY')).roster(season);
+  if (rows.length === 0) throw new Error(`CFBD returned an empty roster for ${season}`);
+  return indexRoster(rows);
+}
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -61,6 +71,8 @@ if (cmd === 'extract') {
     log.info(`${files.length} transcript(s) under ${dir}${dryRun ? ' (dry run: no API calls, nothing stored)' : ''}`);
 
     const client = dryRun ? null : new Anthropic();
+    // Fetched before any paid API call, so a CFBD failure costs nothing.
+    const roster = dryRun ? new Map() : await loadRoster(season);
     let done = 0;
     let skipped = 0;
     let totalFacts = 0;
@@ -94,7 +106,7 @@ if (cmd === 'extract') {
         continue;
       }
       const res = await extractFacts(client!, t.meta, ws, model);
-      const stored = resolveFactTeams(res.facts, kalshiPlusNews, canonical);
+      const stored = resolveFactPlayers(resolveFactTeams(res.facts, kalshiPlusNews, canonical), roster);
       const unresolved = [...new Set(stored.filter((f) => !f.team_resolved).map((f) => f.team))];
       if (unresolved.length) log.warn(`  unresolved team name(s): ${unresolved.join(', ')} (add to the "news" section of config/team-aliases.json)`);
       const n = storeFacts(db, t.meta, stored, { file, sha1: hash, windows: ws.length, input_tokens: res.input_tokens, output_tokens: res.output_tokens, model });
@@ -154,6 +166,7 @@ if (cmd === 'extract') {
     if (canonical.size === 0) log.warn(`no games stored for ${season}; team names will not be resolved to CFBD names`);
     const kalshiPlusNews = { ...aliases.kalshi, ...(aliases.news ?? {}) };
     const ImportSchema = z.object({ source_file: z.string(), facts: z.array(FactSchema) });
+    const roster = await loadRoster(season);
 
     const files = fs.existsSync(inDir) ? fs.readdirSync(inDir).filter((f) => f.endsWith('.facts.json')).sort() : [];
     if (files.length === 0) throw new Error(`no *.facts.json files under ${inDir}`);
@@ -183,7 +196,7 @@ if (cmd === 'extract') {
         continue;
       }
       const ws = relevantWindows(t.lines);
-      const stored = resolveFactTeams(facts, kalshiPlusNews, canonical);
+      const stored = resolveFactPlayers(resolveFactTeams(facts, kalshiPlusNews, canonical), roster);
       const unresolved = [...new Set(stored.filter((f) => !f.team_resolved).map((f) => f.team))];
       if (unresolved.length) log.warn(`  unresolved team name(s): ${unresolved.join(', ')} (add to the "news" section of config/team-aliases.json)`);
       const n = storeFacts(db, t.meta, stored, { file: source_file, sha1: hash, windows: ws.length, input_tokens: 0, output_tokens: 0, model });
@@ -203,6 +216,45 @@ if (cmd === 'extract') {
     if (files.length === 0) throw new Error(`no transcripts found under ${dir}`);
     const res = restampFacts(db, files);
     log.info(`restamped ${res.moved} fact(s) across ${res.transcripts} transcript(s); ${res.unchanged} transcript(s) unchanged; ${res.noDate} still without a publish date`);
+  });
+} else if (cmd === 'players') {
+  // One-time (and safe to re-run) cleanup: resolve every stored player name
+  // against the roster. Where the new name collides with a fact already stored
+  // from the same source, the duplicate row is deleted. --dry-run prints only.
+  runJob('news:players', async () => {
+    loadEnv();
+    const dryRun = flag('dry-run');
+    const db = openDb();
+    const roster = await loadRoster(seasonFor(new Date()));
+    const rows = db
+      .prepare(`SELECT id, source_url, team_raw, team, player, player_raw, position, status FROM news_facts WHERE player IS NOT NULL AND team IS NOT NULL ORDER BY id`)
+      .all() as { id: number; source_url: string; team_raw: string; team: string; player: string; player_raw: string | null; position: string | null; status: string }[];
+    const clash = db.prepare(`SELECT id FROM news_facts WHERE source_url = ? AND team_raw = ? AND player = ? AND status = ? AND id <> ?`);
+    const rename = db.prepare(`UPDATE news_facts SET player = ?, player_raw = COALESCE(player_raw, ?) WHERE id = ?`);
+    const drop = db.prepare(`DELETE FROM news_facts WHERE id = ?`);
+    const keepRaw = db.prepare(`UPDATE news_facts SET player_raw = player WHERE player_raw IS NULL AND player IS NOT NULL`);
+    const changes = new Map<string, number>();
+    let renamed = 0;
+    let merged = 0;
+    db.transaction(() => {
+      for (const r of rows) {
+        const name = canonicalPlayer(roster, r.team, r.player, r.position);
+        if (!name || name === r.player) continue;
+        const key = `${r.team}: ${r.player} -> ${name}`;
+        changes.set(key, (changes.get(key) ?? 0) + 1);
+        if (dryRun) continue;
+        if (clash.get(r.source_url, r.team_raw, name, r.status, r.id)) {
+          drop.run(r.id);
+          merged += 1;
+        } else {
+          rename.run(name, r.player, r.id);
+          renamed += 1;
+        }
+      }
+      if (!dryRun) keepRaw.run();
+    })();
+    for (const [k, n] of [...changes].sort()) console.log(`  ${k}${n > 1 ? ` (${n})` : ''}`);
+    log.info(dryRun ? `dry run: ${[...changes.values()].reduce((a, b) => a + b, 0)} fact(s) would change` : `renamed ${renamed} fact(s), removed ${merged} same-source duplicate(s)`);
   });
 } else if (cmd === 'report') {
   runJob('news:report', async () => {
@@ -224,6 +276,6 @@ if (cmd === 'extract') {
     }
   });
 } else {
-  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|report> [options]');
+  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|players|report> [options]');
   process.exit(2);
 }

@@ -52,7 +52,10 @@ const CfbdLines = z.array(CfbdGameLines);
 const CfbdSp = z.array(z.object({ year: z.number().int(), team: z.string(), rating: z.number() }));
 const CfbdElo = z.array(z.object({ year: z.number().int(), team: z.string(), elo: z.number() }));
 const CfbdFpi = z.array(z.object({ year: z.number().int(), team: z.string(), fpi: z.number() }));
-const CfbdPlayerStats = z.array(z.object({ player: z.string(), team: z.string(), statType: z.string(), stat: z.coerce.number() }));
+const CfbdRoster = z.array(
+  z.object({ team: z.string(), firstName: z.string().nullable().optional(), lastName: z.string().nullable().optional(), position: z.string().nullable().optional() }),
+);
+const CfbdPlayerStats =z.array(z.object({ player: z.string(), team: z.string(), statType: z.string(), stat: z.coerce.number() }));
 
 export interface GameLines {
   game_id: number;
@@ -152,6 +155,12 @@ export class CfbdClient {
       throw new Error(`CFBD /stats/player/season returned ${raw.length} passing rows but none with statType ATT; the response shape has changed`);
     }
     return rows.map((r) => ({ team: r.team, player: r.player, attempts: r.stat }));
+  }
+
+  /** Every team's roster for a season (one call, ~30k players; cached like ratings). */
+  async roster(season: number): Promise<{ team: string; first: string; last: string; position: string | null }[]> {
+    const raw = await this.get('/roster', { year: season }, CfbdRoster, this.cfg.cache_ttl_hours.ratings);
+    return raw.map((r) => ({ team: r.team, first: (r.firstName ?? '').trim(), last: (r.lastName ?? '').trim(), position: r.position ?? null }));
   }
 
   /** Elo as of the end of `week` (omit week for the latest available). */

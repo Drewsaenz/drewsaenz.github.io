@@ -17,6 +17,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { Db } from './db';
 import { log } from './log';
+import { canonicalPlayer, type RosterIndex } from './players';
 import { resolveTeam } from './teams';
 
 export const NEWS_MODEL = 'claude-opus-5-5';
@@ -239,6 +240,16 @@ export async function extractFacts(client: Anthropic, meta: TranscriptMeta, ws: 
 
 export interface StoredFact extends Fact {
   team_resolved: string | null;
+  /** Name as extracted, when `player` was replaced by the roster name. */
+  player_raw?: string | null;
+}
+
+/** Replace each fact's player with the team's roster name where it resolves (see src/players.ts). */
+export function resolveFactPlayers(facts: StoredFact[], roster: RosterIndex): StoredFact[] {
+  return facts.map((f) => {
+    const name = canonicalPlayer(roster, f.team_resolved, f.player, f.position);
+    return { ...f, player_raw: f.player, player: name ?? f.player };
+  });
 }
 
 export function resolveFactTeams(facts: Fact[], aliases: Record<string, string>, canonical: Set<string>): StoredFact[] {
@@ -266,8 +277,8 @@ export function alreadyProcessed(db: Db, url: string, hash: string): boolean {
 export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], run: { file: string; sha1: string; windows: number; input_tokens: number; output_tokens: number; model: string }): number {
   const now = new Date().toISOString();
   const ins = db.prepare(`
-    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, position, status, scope, detail, confidence, timestamp_sec, extracted_at, model)
-    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @position, @status, @scope, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
+    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, player_raw, position, status, scope, detail, confidence, timestamp_sec, extracted_at, model)
+    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @player_raw, @position, @status, @scope, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
   const runStmt = db.prepare(`
     INSERT INTO news_runs (source_url, file, sha1, windows, facts, input_tokens, output_tokens, processed_at, model)
     VALUES (@source_url, @file, @sha1, @windows, @facts, @input_tokens, @output_tokens, @processed_at, @model)
@@ -284,6 +295,7 @@ export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], ru
         team_raw: f.team,
         team: f.team_resolved,
         player: f.player,
+        player_raw: f.player_raw ?? f.player,
         position: f.position,
         status: f.status,
         scope: f.scope,

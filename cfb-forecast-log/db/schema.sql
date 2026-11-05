@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS news_facts (
   as_of         TEXT NOT NULL,        -- video publish date if the scraper recorded one, else the scrape time
   team_raw      TEXT NOT NULL,        -- team name as spoken
   team          TEXT,                 -- CFBD canonical name when resolvable
-  player        TEXT,
+  player        TEXT,                 -- official roster name when it resolves (src/players.ts), else as spoken
+  player_raw    TEXT,                 -- name as spoken / extracted, before roster resolution
   position      TEXT,                 -- QB, RB, WR, OL, DL, LB, DB, K, P, coach, or NULL
   status        TEXT NOT NULL,        -- out | doubtful | questionable | probable | available | returning | limited | unknown
   scope         TEXT,                 -- game | weeks | season | unknown

@@ -13,6 +13,9 @@ export function openDb(file?: string): Db {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
+  // Columns added after the table existed: CREATE TABLE IF NOT EXISTS does not add them.
+  const factCols = new Set((db.prepare('PRAGMA table_info(news_facts)').all() as { name: string }[]).map((c) => c.name));
+  if (!factCols.has('player_raw')) db.exec('ALTER TABLE news_facts ADD COLUMN player_raw TEXT');
   return db;
 }
 
