@@ -45,6 +45,10 @@ runJob(`snapshot:${kind}`, async () => {
   if (v4.base_model_version !== model.model_version) {
     throw new Error(`config/model-v4.json builds on ${v4.base_model_version} but model-v1.json is ${model.model_version}`);
   }
+  const v41 = loadModelV4Config('model-v4.1.json');
+  if (v41.base_model_version !== model.model_version) {
+    throw new Error(`config/model-v4.1.json builds on ${v41.base_model_version} but model-v1.json is ${model.model_version}`);
+  }
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -94,6 +98,12 @@ runJob(`snapshot:${kind}`, async () => {
     if (!adj.has(team)) adj.set(team, adjustmentFor(db, v4, v4Inputs!, v4Starters, team, at));
     return adj.get(team)!;
   };
+  // v4.1 shares v4's stats, starters and weights; only the source layering differs.
+  const adj41 = new Map<string, TeamAdjustment>();
+  const adjFor41 = (team: string, at: string) => {
+    if (!adj41.has(team)) adj41.set(team, adjustmentFor(db, v41, v4Inputs!, v4Starters, team, at));
+    return adj41.get(team)!;
+  };
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
@@ -136,10 +146,12 @@ runJob(`snapshot:${kind}`, async () => {
     const ao = adjFor(opponent, snapshot_utc);
     const p4 = predictV4(v4, pred.prob, ay, ao);
     rows.push({ ...v1Row, model_version: v4.model_version, my_prob: p4 });
+    const p41 = predictV4(v41, pred.prob, adjFor41(m.yes_team, snapshot_utc), adjFor41(opponent, snapshot_utc));
+    rows.push({ ...v1Row, model_version: v41.model_version, my_prob: p41 });
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }
@@ -147,7 +159,7 @@ runJob(`snapshot:${kind}`, async () => {
   // A market snapshot without market prices is useless for scoring. If most
   // selected markets came back unquoted, the Kalshi response shape has
   // probably changed: fail loud rather than log rows with no comparison.
-  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1-v4 rows share quotes, so the ratio is unchanged
+  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1-v4.1 rows share quotes, so the ratio is unchanged
   if (rows.length > 0 && quoted * 2 < rows.length) {
     throw new Error(`only ${quoted} of ${rows.length} markets have a Kalshi bid/ask; refusing to write a snapshot without market prices`);
   }

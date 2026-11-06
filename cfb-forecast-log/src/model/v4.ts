@@ -58,13 +58,28 @@ export const ModelV4ConfigSchema = z.object({
     head_coach_change_points: z.number(),
     coordinator_change_points: z.number(),
   }),
+  /**
+   * v4.1+: how sources are layered. Absent (v4-avail) = the latest fact from
+   * any source wins. Present: an official availability report posted since the
+   * team's last game is the whole truth up to its posting time (players it
+   * does not list are available); other facts count only if newer than that
+   * report (or when there is no report) and only when at least
+   * min_unofficial_sources different outlets agree.
+   */
+  sources: z
+    .object({
+      official_model: z.string().min(1),
+      min_unofficial_sources: z.number().int().min(1),
+    })
+    .optional(),
   clamp: z.tuple([z.number(), z.number()]),
   _note: z.string().optional(),
 });
 export type ModelV4Config = z.infer<typeof ModelV4ConfigSchema>;
 
-export function loadModelV4Config(): ModelV4Config {
-  return ModelV4ConfigSchema.parse(JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'model-v4.json'), 'utf8')));
+/** config/model-v4.json (v4-avail) by default; pass 'model-v4.1.json' for v4.1-avail. */
+export function loadModelV4Config(file = 'model-v4.json'): ModelV4Config {
+  return ModelV4ConfigSchema.parse(JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, file), 'utf8')));
 }
 
 // ------------------------------------------------------------ player importance
@@ -187,8 +202,13 @@ interface FactRow {
   source_channel: string | null;
 }
 
-/** The latest qualifying availability fact per player for a team as of `atIso` (latest wins; ties take the more severe). */
+/**
+ * Each player's availability for a team as of `atIso`. v4-avail: the latest
+ * qualifying fact from any source (ties take the more severe). With
+ * cfg.sources (v4.1+): see layeredStatuses.
+ */
 export function latestStatuses(db: Db, cfg: ModelV4Config, team: string, atIso: string): PlayerStatus[] {
+  if (cfg.sources) return layeredStatuses(db, cfg, cfg.sources, team, atIso);
   const since = new Date(Date.parse(atIso) - cfg.lookback_days * 86_400_000).toISOString();
   const seasonStart = `${new Date(atIso).getUTCFullYear()}-07-01T00:00:00.000Z`;
   const rows = db
@@ -213,6 +233,83 @@ export function latestStatuses(db: Db, cfg: ModelV4Config, team: string, atIso: 
     const position = g.find((r) => r.position && r.position !== 'unknown')?.position ?? pick.position;
     return { player: pick.player, position, status: pick.status, weight: w(pick.status), as_of: pick.as_of, source: pick.source_channel, detail: pick.detail };
   });
+}
+
+const groupByPlayer = <T extends { player: string }>(rows: T[]): T[][] => {
+  const groups: T[][] = [];
+  for (const r of rows) {
+    const g = groups.find((x) => x[0].player === r.player || sameName(x[0].player, r.player));
+    if (g) g.push(r);
+    else groups.push([r]);
+  }
+  return groups;
+};
+
+/**
+ * v4.1 source layering. Official report first, then corroborated news.
+ *   1. The latest official report for this team posted after its previous game
+ *      and at or before `atIso` sets every listed player's status; anyone it
+ *      does not list counts as available, whatever a show said earlier.
+ *   2. Shows and articles count only when newer than that report (or for any
+ *      team with no report), and only for a player at least
+ *      `min_unofficial_sources` different outlets mention: the status used is
+ *      the one that many outlets support (each outlet's latest word counts once).
+ *      A corroborated post-report status overrides the report for that player.
+ */
+export function layeredStatuses(db: Db, cfg: ModelV4Config, src: NonNullable<ModelV4Config['sources']>, team: string, atIso: string): PlayerStatus[] {
+  const since = new Date(Date.parse(atIso) - cfg.lookback_days * 86_400_000).toISOString();
+  const seasonStart = `${new Date(atIso).getUTCFullYear()}-07-01T00:00:00.000Z`;
+  const prev = (db.prepare(`SELECT MAX(kickoff_utc) AS k FROM games WHERE (home_team = ? OR away_team = ?) AND kickoff_utc < ?`).get(team, team, atIso) as { k: string | null }).k;
+  const w = (s: string) => cfg.status_weights[s] ?? 0;
+  const cols = `player, position, status, scope, as_of, detail, confidence, source_channel`;
+  const base = `team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown' AND as_of <= ?`;
+
+  // 1. Official report.
+  const official = db
+    .prepare(`SELECT ${cols} FROM news_facts WHERE ${base} AND model = ? AND as_of > ? ORDER BY as_of DESC`)
+    .all(team, atIso, src.official_model, prev ?? since) as FactRow[];
+  const reportAt = official[0]?.as_of ?? null;
+  const out = new Map<string, PlayerStatus>();
+  for (const r of official.filter((x) => x.as_of === reportAt)) {
+    const prior = [...out.values()].find((x) => sameName(x.player, r.player));
+    if (prior && prior.weight >= w(r.status)) continue;
+    if (prior) out.delete(prior.player);
+    out.set(r.player, { player: r.player, position: r.position, status: r.status, weight: w(r.status), as_of: r.as_of, source: r.source_channel, detail: r.detail });
+  }
+
+  // 2. Corroborated shows and articles, newer than the report.
+  const after = reportAt ?? since;
+  const rows = db
+    .prepare(
+      `SELECT ${cols} FROM news_facts WHERE ${base} AND model <> ?
+          AND (as_of > ? OR (? IS NULL AND scope = 'season' AND as_of >= ?))
+          AND COALESCE(confidence, 0) >= ?
+        ORDER BY as_of DESC`,
+    )
+    .all(team, atIso, src.official_model, after, reportAt, seasonStart, cfg.min_confidence) as FactRow[];
+  for (const g of groupByPlayer(rows)) {
+    const perSource = new Map<string, FactRow>();
+    for (const r of g) {
+      const k = r.source_channel ?? '?';
+      if (!perSource.has(k)) perSource.set(k, r); // rows are newest first: keep each outlet's latest word
+    }
+    const voices = [...perSource.values()].sort((a, b) => w(b.status) - w(a.status));
+    if (voices.length < src.min_unofficial_sources) continue;
+    const pick = voices[src.min_unofficial_sources - 1]; // the strongest status that many outlets support
+    const position = g.find((r) => r.position && r.position !== 'unknown')?.position ?? pick.position;
+    const prior = [...out.values()].find((x) => sameName(x.player, pick.player));
+    if (prior) out.delete(prior.player);
+    out.set(pick.player, {
+      player: prior?.player ?? pick.player,
+      position: prior?.position && prior.position !== 'unknown' ? prior.position : position,
+      status: pick.status,
+      weight: w(pick.status),
+      as_of: g[0].as_of,
+      source: `${voices.length} outlets`,
+      detail: pick.detail,
+    });
+  }
+  return [...out.values()];
 }
 
 export interface CoachEvent {

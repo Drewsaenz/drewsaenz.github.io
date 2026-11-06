@@ -197,6 +197,23 @@ Logged next to v1-v3 at every snapshot; the board shows v4 as "the model" when i
   market before the market has priced it? The `report` snapshot is how that gets measured.
 - `npm run v4:check [-- --all]` shows this week's games where v4 moves v1, with every player and points.
 
+## Model v4.1 (`model_version = 'v4.1-avail'`, approved by Drew 2026-11-06)
+
+v4-avail with identical player and coaching weights (`config/model-v4.1.json`); only the sources are layered
+(`layeredStatuses` in `src/model/v4.ts`, switched on by the config's `sources` block). Logged next to v1-v4 at
+every snapshot; the board shows v4.1 as "the model" when its rows exist.
+
+- An official availability report posted since the team's previous game is the whole truth up to its posting
+  time: listed players get the report's status, unlisted players count as available.
+- Shows and articles count only when newer than that report (or for teams with no report), and only when at
+  least 2 different outlets mention the player; the status used is the one two outlets support (each outlet's
+  latest word counts once). A corroborated post-report status overrides the report for that player.
+- Why: in week 10 one player's podcast facts flipped between out, questionable and returning daily, and
+  single-show claims (Arch Manning probable, Missouri QB Austin Simmons questionable, Harris Seymour out) moved
+  v4 though the SEC report listed none of them. Coaching changes are unchanged from v4 (still noisy: the fact
+  date is when a show mentioned the change, not when it happened).
+- `npm run v4:check -- --v41` previews it.
+
 ### `report` snapshot (Wednesday evening)
 
 `npm run snapshot:report`: the same markets as Tuesday, re-priced after the SEC's initial availability report

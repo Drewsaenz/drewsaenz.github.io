@@ -1,0 +1,44 @@
+{
+  "model_version": "v4.1-avail",
+  "base_model_version": "v1-blend",
+  "created_at": "2026-11-06",
+  "points_to_logit": 0.14105,
+  "status_weights": {
+    "out": 1,
+    "doubtful": 0.75,
+    "limited": 0.5,
+    "questionable": 0.35,
+    "probable": 0.1,
+    "available": 0,
+    "returning": 0
+  },
+  "lookback_days": 8,
+  "min_confidence": 0.5,
+  "qb": {
+    "points": 6,
+    "min_starter_share": 0.4,
+    "weeks_checked": 3,
+    "fade_per_missed_week": 0.25,
+    "min_fade": 0.25
+  },
+  "rb_points": 3,
+  "receiver_points": 4,
+  "defense_points": 8,
+  "ol_points_each": 0.6,
+  "ol_cap": 2,
+  "non_qb_cap": 6,
+  "coach": {
+    "window_days": 21,
+    "head_coach_change_points": 1,
+    "coordinator_change_points": 0
+  },
+  "sources": {
+    "official_model": "availability-report",
+    "min_unofficial_sources": 2
+  },
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v4.1-avail = v4-avail with the same player and coaching weights, but sources are layered: an official availability report posted since the team's last game is the whole truth up to its posting time (unlisted players count as available), and shows/articles count only after that report (or for teams with no report) and only when 2 different outlets agree. Motivated by week 10: podcast facts for one player flipped between out, questionable and returning daily, and single-show claims (Arch Manning probable, Missouri QB Austin Simmons questionable, Harris Seymour out) moved v4 though the SEC report listed none of them. Approved by Drew 2026-11-06. Any change after v4.1 rows exist is a new model_version."
+}

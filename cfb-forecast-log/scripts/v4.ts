@@ -1,6 +1,6 @@
 /**
  * v4-avail helper CLI. Read-only: writes no forecasts.
- *   npm run v4:check [-- --all]   this week's games where v4 moves v1, with the reasons
+ *   npm run v4:check [-- --all] [--v41]   this week's games where v4 (or v4.1) moves v1, with the reasons
  *
  * Uses the v1 probabilities and Kalshi prices from the latest Tuesday, report or
  * manual snapshot, and today's facts, so it shows what v4 would say right now.
@@ -13,9 +13,11 @@ import { loadModelV4Config, predictV4, type TeamAdjustment } from '../src/model/
 import { adjustmentFor, loadV4Inputs } from '../src/model/v4-inputs';
 
 const all = process.argv.includes('--all');
+const v41 = process.argv.includes('--v41');
+const label = v41 ? 'v4.1' : 'v4';
 
 runJob('v4:check', async () => {
-  const cfg = loadModelV4Config();
+  const cfg = loadModelV4Config(v41 ? 'model-v4.1.json' : undefined);
   const { cfbd, season, week } = await seasonContext();
   const db = openDb();
   const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual')`).get() as { s: string | null };
@@ -53,14 +55,14 @@ runJob('v4:check', async () => {
       if (a.items.length > 6) detail.push(`      ...and ${a.items.length - 6} more, ${a.items.slice(6).reduce((n, i) => n + i.points, 0).toFixed(1)} pts`);
       for (const c of a.coach) detail.push(`      coaching change (${c.role}): ${c.detail.slice(0, 110)}`);
     }
-    out.push({ line: `${r.away_team} at ${r.home_team}: home v1 ${pct(r.my_prob)} -> v4 ${pct(p4)} (${move >= 0 ? '+' : ''}${(move * 100).toFixed(1)}), Kalshi ${pct(r.market_mid)}, Vegas ${pct(r.vegas_prob)}`, detail, move });
+    out.push({ line: `${r.away_team} at ${r.home_team}: home v1 ${pct(r.my_prob)} -> ${label} ${pct(p4)} (${move >= 0 ? '+' : ''}${(move * 100).toFixed(1)}), Kalshi ${pct(r.market_mid)}, Vegas ${pct(r.vegas_prob)}`, detail, move });
   }
   out.sort((a, b) => Math.abs(b.move) - Math.abs(a.move));
   const shown = all ? out : out.filter((o) => Math.abs(o.move) >= 0.005);
-  console.log(`v4 vs v1 for week ${week} (v1 and prices from the ${latest.s} snapshot; facts as of now)\n`);
+  console.log(`${label} vs v1 for week ${week} (v1 and prices from the ${latest.s} snapshot; facts as of now)\n`);
   for (const o of shown) {
     console.log(o.line);
     for (const d of o.detail) console.log(d);
   }
-  log.info(`${out.length} game(s), ${out.filter((o) => Math.abs(o.move) >= 0.005).length} moved by v4`);
+  log.info(`${out.length} game(s), ${out.filter((o) => Math.abs(o.move) >= 0.005).length} moved by ${label}`);
 });
