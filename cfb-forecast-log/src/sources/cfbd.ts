@@ -66,6 +66,11 @@ export interface GameLines {
 
 export type TeamRatings = Map<string, number>;
 
+/** Season player stats are multi-megabyte responses; give them longer than the default 30s. */
+const BIG_TIMEOUT_MS = 120_000;
+/** Oldest cached copy of a big response used when CFBD cannot be reached. */
+const STALE_MAX_HOURS = 7 * 24;
+
 export class CfbdClient {
   private calls = 0;
   private readonly cfg: CfbdConfig;
@@ -81,7 +86,14 @@ export class CfbdClient {
     return this.calls;
   }
 
-  private async get<T>(endpoint: string, params: Record<string, string | number>, schema: z.ZodType<T>, ttlHours: number): Promise<T> {
+  /**
+   * Cached GET. With `big`, the request gets a longer timeout and, if CFBD cannot
+   * be reached at all, falls back to the last cached copy (up to STALE_MAX_HOURS
+   * old) with a warning. Used only for season player stats and rosters, where a
+   * day-old copy is fine; schedules, lines and ratings never fall back. A
+   * response that arrives but fails validation still throws (hard rule 5).
+   */
+  private async get<T>(endpoint: string, params: Record<string, string | number>, schema: z.ZodType<T>, ttlHours: number, big = false): Promise<T> {
     const qs = Object.entries(params)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
@@ -90,8 +102,9 @@ export class CfbdClient {
     const key = crypto.createHash('sha1').update(url).digest('hex');
     const file = path.join(this.cacheDir, `${key}.json`);
 
+    let cached: { fetched_at: string; url: string; body: unknown } | null = null;
     if (fs.existsSync(file)) {
-      const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as { fetched_at: string; url: string; body: unknown };
+      cached = JSON.parse(fs.readFileSync(file, 'utf8')) as { fetched_at: string; url: string; body: unknown };
       if (Date.now() - Date.parse(cached.fetched_at) < ttlHours * 3_600_000) {
         return schema.parse(camelKeys(cached.body));
       }
@@ -99,7 +112,15 @@ export class CfbdClient {
 
     this.calls += 1;
     log.info(`CFBD GET ${endpoint} ${qs} (call #${this.calls})`);
-    const body = await getJson(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
+    let body: unknown;
+    try {
+      body = await getJson(url, { headers: { Authorization: `Bearer ${this.apiKey}` }, ...(big ? { timeoutMs: BIG_TIMEOUT_MS } : {}) });
+    } catch (err) {
+      const ageH = cached ? (Date.now() - Date.parse(cached.fetched_at)) / 3_600_000 : Infinity;
+      if (!big || !cached || ageH > STALE_MAX_HOURS) throw err;
+      log.warn(`CFBD ${endpoint} ${qs} unreachable (${(err as Error).message}); using the cached copy from ${ageH.toFixed(0)}h ago`);
+      return schema.parse(camelKeys(cached.body));
+    }
     const parsed = schema.parse(camelKeys(body)); // validate before caching
     fs.writeFileSync(file, JSON.stringify({ fetched_at: new Date().toISOString(), url, body }));
     return parsed;
@@ -149,7 +170,7 @@ export class CfbdClient {
 
   /** Season-to-date pass attempts per player (one call for every team; cached like ratings). */
   async passAttempts(season: number): Promise<{ team: string; player: string; attempts: number }[]> {
-    const raw = await this.get('/stats/player/season', { year: season, category: 'passing', seasonType: this.cfg.season_type }, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings);
+    const raw = await this.get('/stats/player/season', { year: season, category: 'passing', seasonType: this.cfg.season_type }, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings, true);
     const rows = raw.filter((r) => r.statType.toUpperCase() === 'ATT');
     if (raw.length > 0 && rows.length === 0) {
       throw new Error(`CFBD /stats/player/season returned ${raw.length} passing rows but none with statType ATT; the response shape has changed`);
@@ -167,13 +188,13 @@ export class CfbdClient {
       params.startWeek = weeks.start;
       params.endWeek = weeks.end;
     }
-    const raw = await this.get('/stats/player/season', params, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings);
+    const raw = await this.get('/stats/player/season', params, CfbdPlayerStats, this.cfg.cache_ttl_hours.ratings, true);
     return raw.map((r) => ({ player: r.player, team: r.team, position: r.position ?? null, statType: r.statType.toUpperCase(), stat: r.stat }));
   }
 
   /** Every team's roster for a season (one call, ~30k players; cached like ratings). */
   async roster(season: number): Promise<{ team: string; first: string; last: string; position: string | null }[]> {
-    const raw = await this.get('/roster', { year: season }, CfbdRoster, this.cfg.cache_ttl_hours.ratings);
+    const raw = await this.get('/roster', { year: season }, CfbdRoster, this.cfg.cache_ttl_hours.ratings, true);
     return raw.map((r) => ({ team: r.team, first: (r.firstName ?? '').trim(), last: (r.lastName ?? '').trim(), position: r.position ?? null }));
   }
 
