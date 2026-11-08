@@ -6,7 +6,7 @@ import type { GameRow } from './types';
 
 /** A game still unplayed this long after kickoff is treated as cancelled. */
 export const VOID_AFTER_DAYS = 4;
-/** A forecast made more than this before kickoff was made for a different date (game postponed). */
+/** A scheduled (non-manual) forecast made more than this before kickoff was made for a different date (game postponed). */
 export const MAX_LEAD_DAYS = 8;
 /** A pregame row taken more than this before the final kickoff saw a kickoff that later moved. */
 export const MAX_PREGAME_LEAD_HOURS = 3;
@@ -37,7 +37,9 @@ export function decide(p: PendingForecast, g: GameRow | undefined, now: Date): D
   }
   const kick = Date.parse(g.kickoff_utc);
   const lead = kick - Date.parse(p.snapshot_utc);
-  if (lead > MAX_LEAD_DAYS * DAY) return { kind: 'void', reason: 'game moved to a later date after this forecast' };
+  // Scheduled snapshots are taken in the game's own week, so a long lead means the game moved.
+  // Manual runs log every open market, including games weeks away: a long lead is normal there.
+  if (p.snapshot_kind !== 'manual' && lead > MAX_LEAD_DAYS * DAY) return { kind: 'void', reason: 'game moved to a later date after this forecast' };
   if (p.snapshot_kind === 'pregame' && lead > MAX_PREGAME_LEAD_HOURS * 3_600_000) {
     return { kind: 'void', reason: 'kickoff moved after the pregame snapshot' };
   }

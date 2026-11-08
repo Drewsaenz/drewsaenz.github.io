@@ -32,6 +32,8 @@ test('decide waits on games CFBD dropped, then voids them; never throws', () => 
 test('decide voids forecasts for games moved to another week, and pregame rows for moved kickoffs', () => {
   const moved = game({ game_id: 1, home_team: 'Texas', away_team: 'Vanderbilt', kickoff_utc: '2026-11-14T20:30:00Z' });
   assert.equal(decide(p(), moved, at('2026-11-08T12:00:00Z')).kind, 'void');
+  // A manual preview logged weeks ahead is not a moved game.
+  assert.deepEqual(decide(p({ snapshot_kind: 'manual' }), moved, at('2026-11-08T12:00:00Z')), { kind: 'wait', why: 'not_final' });
   const pre = p({ snapshot_kind: 'pregame', snapshot_utc: '2026-11-07T19:30:00Z' });
   assert.deepEqual(decide(pre, final(30, 20), at('2026-11-08T12:00:00Z')), { kind: 'grade', outcome: 1 });
   const late = game({ game_id: 1, home_team: 'Texas', away_team: 'Vanderbilt', kickoff_utc: '2026-11-08T00:30:00Z', home_points: 30, away_points: 20, completed: 1 });
