@@ -63,6 +63,19 @@ runJob(`snapshot:${kind}`, async () => {
     }
     log.info(`latest official availability report posted ${rep.at}`);
   }
+  // Pregame runs every 30 min Thu-Sat. When nothing kicks off in the window there is
+  // nothing to snapshot; after Saturday's last kickoff the season week rolls over to one
+  // whose ratings are not pulled until Tuesday, so checking first avoids a false failure.
+  if (kind === 'pregame') {
+    const soon = games.filter((g) => {
+      const kick = Date.parse(g.kickoff_utc);
+      return kick > now.getTime() && kick - now.getTime() <= PREGAME_WINDOW_MS;
+    });
+    if (soon.length === 0) {
+      log.info('no game kicks off in the next 90 min; nothing to snapshot');
+      return;
+    }
+  }
   const ratings = loadRatings(db, season, week);
   if (ratings.size === 0) throw new Error(`no ratings stored for season ${season} week ${week}; run \`npm run ratings\` first`);
 
