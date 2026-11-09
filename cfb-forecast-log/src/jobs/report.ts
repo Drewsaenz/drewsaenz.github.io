@@ -87,10 +87,13 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
     }
 
     // Summary lines
-    const tues = byKind.get('tuesday') ?? modelRows;
+    // Headline rows: Tuesday when the model has them; otherwise (a model added mid-week) its pregame rows.
+    const kindUsed = byKind.has('tuesday') ? 'tuesday' : byKind.has('pregame') ? 'pregame' : null;
+    const kindLabel = kindUsed === 'pregame' ? 'pregame (kickoff)' : 'Tuesday';
+    const tues = (kindUsed && byKind.get(kindUsed)) || modelRows;
     const acc = compareAccuracy(tues);
     const beats = acc.mine.brier !== null && acc.market.brier !== null ? (acc.mine.brier < acc.market.brier ? 'beats' : 'does not beat') : 'cannot yet be compared to';
-    summaries.push(`${model}: my Brier ${f(acc.mine.brier)} ${beats} the market's ${f(acc.market.brier)} on ${acc.mine.n} resolved Tuesday rows.`);
+    summaries.push(`${model}: my Brier ${f(acc.mine.brier)} ${beats} the market's ${f(acc.market.brier)} on ${acc.mine.n} resolved ${kindLabel} rows.`);
     if (d.games > 0 && d.tuesday.mine.brier !== null && d.tuesday.market.brier !== null && d.pregame.mine.brier !== null && d.pregame.market.brier !== null) {
       const gapT = d.tuesday.mine.brier - d.tuesday.market.brier;
       const gapP = d.pregame.mine.brier - d.pregame.market.brier;
@@ -99,11 +102,11 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
     } else {
       summaries.push(`${model}: not enough games with both Tuesday and pregame rows to measure edge decay.`);
     }
-    const mk = pnlByKind.get('tuesday')?.maker;
+    const mk = pnlByKind.get(kindUsed ?? 'tuesday')?.maker;
     summaries.push(
       mk && mk.n > 0
-        ? `${model}: maker-only trading on the ${cfg.edge_min} edge filter would have made ${money(mk.pnl)} on ${mk.n} Tuesday rows (ROI ${((mk.roi ?? 0) * 100).toFixed(1)}%, fills not guaranteed).`
-        : `${model}: no Tuesday rows cleared the ${cfg.edge_min} edge filter, so no hypothetical maker P&L.`,
+        ? `${model}: maker-only trading on the ${cfg.edge_min} edge filter would have made ${money(mk.pnl)} on ${mk.n} ${kindLabel} rows (ROI ${((mk.roi ?? 0) * 100).toFixed(1)}%, fills not guaranteed).`
+        : `${model}: no ${kindLabel} rows cleared the ${cfg.edge_min} edge filter, so no hypothetical maker P&L.`,
     );
     if (nc.flagged.length > 0) {
       summaries.push(
