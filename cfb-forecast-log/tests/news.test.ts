@@ -59,10 +59,10 @@ test('facts resolve team names, store once, and skip reprocessing', () => {
   upsertGames(db, [game({ game_id: 1, season: 2026, week: 9, home_team: 'Texas', away_team: 'Mississippi State', kickoff_utc: '2026-10-31T23:30:00Z' })]);
   const t = parseTranscript(md.replace('saved: 2026-11-01T18:00:00.000Z', 'published: 2026-10-29'));
   const facts: Fact[] = [
-    { team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'starting QB out for the season', confidence: 1, timestamp_sec: 24 },
-    { team: 'Horns', player: 'Collin Simmons', position: 'EDGE', status: 'doubtful', scope: 'game', detail: 'Sark said doubtful', confidence: 0.9, timestamp_sec: 31 },
-    { team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'duplicate', confidence: 1, timestamp_sec: 200 },
-    { team: 'Nowhere U', player: null, position: 'OL', status: 'limited', scope: 'unknown', detail: 'x', confidence: 0.3, timestamp_sec: 1 },
+    { team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'starting QB out for the season', confidence: 1, timestamp_sec: 24, game_ref: 'upcoming' },
+    { team: 'Horns', player: 'Collin Simmons', position: 'EDGE', status: 'doubtful', scope: 'game', detail: 'Sark said doubtful', confidence: 0.9, timestamp_sec: 31, game_ref: 'upcoming' },
+    { team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'duplicate', confidence: 1, timestamp_sec: 200, game_ref: 'upcoming' },
+    { team: 'Nowhere U', player: null, position: 'OL', status: 'limited', scope: 'unknown', detail: 'x', confidence: 0.3, timestamp_sec: 1, game_ref: 'upcoming' },
   ];
   const stored = resolveFactTeams(facts, { Horns: 'Texas' }, new Set(['Texas', 'Mississippi State']));
   assert.equal(stored[1].team_resolved, 'Texas');
@@ -86,7 +86,7 @@ test('qbFlags ignores facts recorded after kickoff', () => {
   const db = openDb(':memory:');
   upsertGames(db, [game({ game_id: 1, season: 2026, week: 9, home_team: 'Texas', away_team: 'Mississippi State', kickoff_utc: '2026-10-31T23:30:00Z' })]);
   const t = parseTranscript(md); // saved 2026-11-01, after kickoff
-  storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'AJ Swann', position: 'QB', status: 'out', scope: 'game', detail: 'knocked out', confidence: 1, timestamp_sec: 1 }], {}, new Set(['Mississippi State'])), { file: 'x', sha1: 'h', windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
+  storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'AJ Swann', position: 'QB', status: 'out', scope: 'game', detail: 'knocked out', confidence: 1, timestamp_sec: 1, game_ref: 'upcoming' }], {}, new Set(['Mississippi State'])), { file: 'x', sha1: 'h', windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
   assert.equal(qbFlags(db).size, 0);
 });
 
@@ -97,7 +97,7 @@ test('restampFacts moves facts to the publish date once the scraper backfills it
   const file = path.join(dir, 't.md');
   fs.writeFileSync(file, md); // saved-only front matter, Nov 1
   const t = parseTranscript(md, file);
-  storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'x', confidence: 1, timestamp_sec: 1 }], {}, new Set(['Mississippi State'])), { file, sha1: sha1(md), windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
+  storeFacts(db, t.meta, resolveFactTeams([{ team: 'Mississippi State', player: 'Kamario Taylor', position: 'QB', status: 'out', scope: 'season', detail: 'x', confidence: 1, timestamp_sec: 1, game_ref: 'upcoming' }], {}, new Set(['Mississippi State'])), { file, sha1: sha1(md), windows: 1, input_tokens: 0, output_tokens: 0, model: 't' });
   assert.equal(qbFlags(db).size, 0); // Nov 1 is after kickoff
   // Scraper backfills a publish date before the game.
   const md2 = md.replace('saved: 2026-11-01T18:00:00.000Z', 'published: 2026-10-29T17:00:00.000Z\npublished_source: rss\nsaved: 2026-11-01T18:00:00.000Z');

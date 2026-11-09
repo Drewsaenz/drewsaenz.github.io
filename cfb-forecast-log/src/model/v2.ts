@@ -148,7 +148,7 @@ export function starterStatus(db: Db, cfg: ModelV2Config, team: string, starter:
   const rows = db
     .prepare(
       `SELECT team, player, status, scope, as_of, detail, confidence FROM news_facts
-        WHERE team = ? AND position = 'QB' AND player IS NOT NULL AND status <> 'unknown'
+        WHERE team = ? AND position = 'QB' AND player IS NOT NULL AND status <> 'unknown' AND COALESCE(game_ref, '') <> 'previous'
           AND as_of <= ? AND (as_of >= ? OR (scope = 'season' AND as_of >= ?))
           AND COALESCE(confidence, 0) >= ?
         ORDER BY as_of DESC`,

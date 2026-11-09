@@ -214,6 +214,30 @@ every snapshot; the board shows v4.1 as "the model" when its rows exist.
   date is when a show mentioned the change, not when it happened).
 - `npm run v4:check -- --v41` previews it.
 
+## Model v5 (`src/model/v5.ts`, `model_version = 'v5-fused'`, approved by Drew 2026-11-09)
+
+The line, the ratings and the injury layer blended with weights fit on this project's own graded rows.
+
+- `z = a0 + a*logit(vegas) + b*logit(v1)/temper + w(h)*c*injury`; no line posted: `logit(v1)/temper + w(h)*c*injury`.
+  `injury` = points the opponent lost to unavailable players minus the yes team's, from v4.1's source-layered
+  adjustment. `w(h)` fades the injury term from 1 at >= 72 h before kickoff to 0 at kickoff (`fade` in config):
+  the line absorbs injury news during the week, and v2/v4 lost ground at kickoff by counting it twice.
+- `npm run v5:fit`: ridge logistic regression on graded v1 Tuesday/pregame rows with a line (not manual, not
+  voided), pulled toward the priors in `config/model-v5.json` (v3's anchor weights, v4's points-to-logit) with
+  strength `prior_weight`; scored leave-one-week-out next to Kalshi, Vegas, v1 and the priors alone. Writes
+  `coefs` and `fitted_at`. Refuses once v5 rows exist: a refit is a new model_version. Until fitted, the snapshot
+  logs v1-v4.1 and skips v5 with a warning.
+- `npm run v5:check` previews this week's games with the injury term and its fade weight.
+- Reads v4.1's config for the injury layer, so v5 inherits v4.1's "official report first, two outlets otherwise".
+
+### Fact timing (`game_ref`, 2026-11-09)
+
+The extractor tags every fact with which game it is about: `upcoming`, `previous` (a recap of a game already
+played: "left in the third quarter", "played through it"), `season`, or `unknown`. v2, v4, v4.1, v5 and the News
+check ignore `previous` facts. Facts stored before 2026-11-09 have `game_ref` NULL and still count. Official
+availability-report facts are `upcoming` (or `season` when exempt-Out). Drew approved applying this to the
+existing versions too: it removes wrong data rather than changing what the models do with right data.
+
 ### `report` snapshot (Wednesday evening)
 
 `npm run snapshot:report`: the same markets as Tuesday, re-priced after the SEC's initial availability report
@@ -306,7 +330,7 @@ TZ=America/Chicago
 - Adding a new rating source (needs a new `model_version`).
 - Anything touching Kalshi auth or order endpoints (answer is no in v1).
 
-## Transcripts (context, and the only input to v2-qb)
+## Transcripts (context, and the input to the injury layer of v2, v4, v4.1 and v5)
 
 `data/transcripts/<collection>/*.md|*.txt` are YouTube transcripts (Texas football shows, pressers, film reviews) pushed from `~/Desktop/Home/TranscriptGPT`. The `.md` ones carry YAML frontmatter (title, channel, url, video_id, saved). They are gitignored with the rest of `data/`. Use them when Drew asks for qualitative context on a game or team (injuries, QB situation, coaching sentiment). They are not a rating source for v1. The only model that reads them is `v2-qb` (see Model v2 above), which Drew approved on 2026-11-02; wiring them into anything else still needs asking.
 

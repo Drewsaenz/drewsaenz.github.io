@@ -17,6 +17,7 @@ import { adjustForQb, loadModelV2Config, starterStatus, startersFromAttempts } f
 import { assertV3Fitted, loadModelV3Config, predictV3 } from '../model/v3';
 import { loadModelV4Config, predictV4, type TeamAdjustment } from '../model/v4';
 import { adjustmentFor, describe, loadV4Inputs } from '../model/v4-inputs';
+import { loadModelV5Config, predictV5 } from '../model/v5';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
 import { seasonContext } from './context';
@@ -49,6 +50,12 @@ runJob(`snapshot:${kind}`, async () => {
   if (v41.base_model_version !== model.model_version) {
     throw new Error(`config/model-v4.1.json builds on ${v41.base_model_version} but model-v1.json is ${model.model_version}`);
   }
+  // v5 is optional until `npm run v5:fit` has written its weights: an unfitted
+  // v5 must not cost the snapshot its v1-v4.1 rows, so it is skipped with a warning.
+  const v5cfg = loadModelV5Config();
+  const v5 = v5cfg.fitted_at && v5cfg.coefs ? v5cfg : null;
+  if (!v5) log.warn(`config/model-v5.json is not fitted yet; run \`npm run v5:fit\`. No ${v5cfg.model_version} rows this snapshot.`);
+  else if (v5.injury_model_version !== v41.model_version) throw new Error(`model-v5.json expects injury model ${v5.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -159,12 +166,20 @@ runJob(`snapshot:${kind}`, async () => {
     const ao = adjFor(opponent, snapshot_utc);
     const p4 = predictV4(v4, pred.prob, ay, ao);
     rows.push({ ...v1Row, model_version: v4.model_version, my_prob: p4 });
-    const p41 = predictV4(v41, pred.prob, adjFor41(m.yes_team, snapshot_utc), adjFor41(opponent, snapshot_utc));
+    const a41y = adjFor41(m.yes_team, snapshot_utc);
+    const a41o = adjFor41(opponent, snapshot_utc);
+    const p41 = predictV4(v41, pred.prob, a41y, a41o);
     rows.push({ ...v1Row, model_version: v41.model_version, my_prob: p41 });
+    let p5: number | null = null;
+    if (v5) {
+      const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
+      p5 = predictV5(v5, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: a41o.points - a41y.points, hoursToKickoff: hours });
+      rows.push({ ...v1Row, model_version: v5.model_version, my_prob: p5 });
+    }
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }
@@ -172,7 +187,7 @@ runJob(`snapshot:${kind}`, async () => {
   // A market snapshot without market prices is useless for scoring. If most
   // selected markets came back unquoted, the Kalshi response shape has
   // probably changed: fail loud rather than log rows with no comparison.
-  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1-v4.1 rows share quotes, so the ratio is unchanged
+  const quoted = rows.filter((r) => r.market_mid !== null).length; // v1-v5 rows share quotes, so the ratio is unchanged
   if (rows.length > 0 && quoted * 2 < rows.length) {
     throw new Error(`only ${quoted} of ${rows.length} markets have a Kalshi bid/ask; refusing to write a snapshot without market prices`);
   }

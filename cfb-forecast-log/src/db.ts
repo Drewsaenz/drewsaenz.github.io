@@ -16,6 +16,7 @@ export function openDb(file?: string): Db {
   // Columns added after the table existed: CREATE TABLE IF NOT EXISTS does not add them.
   const factCols = new Set((db.prepare('PRAGMA table_info(news_facts)').all() as { name: string }[]).map((c) => c.name));
   if (!factCols.has('player_raw')) db.exec('ALTER TABLE news_facts ADD COLUMN player_raw TEXT');
+  if (!factCols.has('game_ref')) db.exec('ALTER TABLE news_facts ADD COLUMN game_ref TEXT');
   return db;
 }
 

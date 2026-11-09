@@ -164,6 +164,9 @@ export const FactSchema = z.object({
   position: z.enum(['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'EDGE', 'LB', 'DB', 'K', 'P', 'coach', 'unknown']),
   status: z.enum(['out', 'doubtful', 'questionable', 'probable', 'available', 'returning', 'limited', 'unknown']),
   scope: z.enum(['game', 'weeks', 'season', 'unknown']).describe('How long the status applies.'),
+  game_ref: z
+    .enum(['upcoming', 'previous', 'season', 'unknown'])
+    .describe('Which game the statement is about: "upcoming" = the team\'s next game; "previous" = a game already played (a recap, e.g. "left the game", "played through it", "missed last week"); "season" = the rest of the season; "unknown" if unclear.'),
   detail: z.string().describe('One sentence paraphrase or short quote of what was said, including who said it if a coach was quoted.'),
   confidence: z.number().min(0).max(1).describe('1.0 = stated as fact by a coach or official report; 0.5 = beat reporter expectation; 0.2 = speculation.'),
   timestamp_sec: z.number().int().describe('Approximate second in the video where this was said.'),
@@ -183,6 +186,7 @@ Rules:
 - Use the full team name. Resolve pronouns and nicknames from context ("the Horns" -> "Texas", "the Bulldogs" in a Texas vs Mississippi State preview -> "Mississippi State").
 - Auto-captions misspell names. Correct obvious misspellings when the identity is clear from context; otherwise keep the spoken form.
 - One fact per player per status. If the same fact is repeated, return it once.
+- Set game_ref carefully. A statement about what happened in a game already played ("left in the third quarter", "played through an ankle injury in the win", "was out last week") is "previous", even if it implies something about next week. Only use "upcoming" when the speaker is talking about the next game ("ruled out for Saturday", "expected to start against LSU", listed on this week's availability report). Season-ending injuries and firings are "season".
 - If a segment contains no availability facts, return an empty list.`;
 
 export interface ExtractResult {
@@ -279,8 +283,8 @@ export function alreadyProcessed(db: Db, url: string, hash: string): boolean {
 export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], run: { file: string; sha1: string; windows: number; input_tokens: number; output_tokens: number; model: string }): number {
   const now = new Date().toISOString();
   const ins = db.prepare(`
-    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, player_raw, position, status, scope, detail, confidence, timestamp_sec, extracted_at, model)
-    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @player_raw, @position, @status, @scope, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
+    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, player_raw, position, status, scope, game_ref, detail, confidence, timestamp_sec, extracted_at, model)
+    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @player_raw, @position, @status, @scope, @game_ref, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
   const runStmt = db.prepare(`
     INSERT INTO news_runs (source_url, file, sha1, windows, facts, input_tokens, output_tokens, processed_at, model)
     VALUES (@source_url, @file, @sha1, @windows, @facts, @input_tokens, @output_tokens, @processed_at, @model)
@@ -301,6 +305,7 @@ export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], ru
         position: f.position,
         status: f.status,
         scope: f.scope,
+        game_ref: f.game_ref ?? 'unknown',
         detail: f.detail,
         confidence: f.confidence,
         timestamp_sec: f.timestamp_sec,
@@ -397,7 +402,7 @@ export function qbFlags(db: Db): Map<number, string[]> {
     .prepare(
       `SELECT g.game_id, n.team, n.player, n.status
          FROM games g JOIN news_facts n ON n.team IN (g.home_team, g.away_team)
-        WHERE n.position = 'QB' AND n.status IN ('out', 'doubtful')
+        WHERE n.position = 'QB' AND n.status IN ('out', 'doubtful') AND COALESCE(n.game_ref, '') <> 'previous'
           AND n.as_of < g.kickoff_utc AND n.as_of >= datetime(g.kickoff_utc, '-8 days')
         GROUP BY g.game_id, n.team, n.player, n.status`,
     )

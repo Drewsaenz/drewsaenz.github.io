@@ -27,6 +27,8 @@
     "v3:fit": "tsx scripts/v3.ts fit",
     "v3:check": "tsx scripts/v3.ts check",
     "v4:check": "tsx scripts/v4.ts",
+    "v5:fit": "tsx scripts/v5.ts fit",
+    "v5:check": "tsx scripts/v5.ts check",
     "fit": "tsx scripts/fit.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",

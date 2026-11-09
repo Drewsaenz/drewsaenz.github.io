@@ -214,7 +214,7 @@ export function latestStatuses(db: Db, cfg: ModelV4Config, team: string, atIso: 
   const rows = db
     .prepare(
       `SELECT player, position, status, scope, as_of, detail, confidence, source_channel FROM news_facts
-        WHERE team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown'
+        WHERE team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown' AND COALESCE(game_ref, '') <> 'previous'
           AND as_of <= ? AND (as_of >= ? OR (scope = 'season' AND as_of >= ?))
           AND COALESCE(confidence, 0) >= ?
         ORDER BY as_of DESC`,
@@ -262,7 +262,7 @@ export function layeredStatuses(db: Db, cfg: ModelV4Config, src: NonNullable<Mod
   const prev = (db.prepare(`SELECT MAX(kickoff_utc) AS k FROM games WHERE (home_team = ? OR away_team = ?) AND kickoff_utc < ?`).get(team, team, atIso) as { k: string | null }).k;
   const w = (s: string) => cfg.status_weights[s] ?? 0;
   const cols = `player, position, status, scope, as_of, detail, confidence, source_channel`;
-  const base = `team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown' AND as_of <= ?`;
+  const base = `team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown' AND COALESCE(game_ref, '') <> 'previous' AND as_of <= ?`;
 
   // 1. Official report.
   const official = db
