@@ -94,9 +94,12 @@ if (cmd === 'fit') {
       side.push({ kalshi: r.market_mid!, vegas: r.vegas_prob!, v1: r.my_prob, y: r.outcome! });
     }
     const prior = [cfg.priors.a0, cfg.priors.a, cfg.priors.b, cfg.priors.c];
-    const fitted = fitRidgeLogistic(samples, prior, cfg.prior_weight);
-    const unpenalised = fitRidgeLogistic(samples, prior, 1e-6);
-    const cv = crossValidate(samples, prior, cfg.prior_weight);
+    const injuryRows = samples.filter((s) => Math.abs(s.f[3]) > 0.05).length;
+    const holdC = injuryRows < cfg.min_injury_rows;
+    const fixed = holdC ? [3] : [];
+    const fitted = fitRidgeLogistic(samples, prior, cfg.prior_weight, { fixed });
+    const unpenalised = fitRidgeLogistic(samples, prior, 1e-6, { fixed });
+    const cv = crossValidate(samples, prior, cfg.prior_weight, fixed);
     const pairs = (f: (s: (typeof side)[number]) => number) => side.map((s) => ({ p: f(s), y: s.y }));
     const scores = {
       v5_cv_leave_one_week_out: cv.brier,
@@ -110,14 +113,13 @@ if (cmd === 'fit') {
     console.log(`\nfit on ${samples.length} rows, ${Object.keys(cv.folds).length} week(s) held out in turn\n`);
     console.log(`            a0      a(vegas)  b(v1/temper)  c(injury/pt)`);
     console.log(`prior      ${prior.map((v) => v.toFixed(4).padStart(8)).join('  ')}`);
-    console.log(`fitted     ${fitted.map((v) => v.toFixed(4).padStart(8)).join('  ')}   (ridge toward prior, weight ${cfg.prior_weight})`);
+    console.log(`fitted     ${fitted.map((v) => v.toFixed(4).padStart(8)).join('  ')}   (ridge toward prior, weight ${cfg.prior_weight}${holdC ? `; c held at prior: only ${injuryRows} rows carry an injury term, need ${cfg.min_injury_rows}` : ''})`);
     console.log(`unpenalised${unpenalised.map((v) => v.toFixed(4).padStart(8)).join('  ')}   (what the data alone says; noisy)`);
     console.log(`\nBrier on these rows (lower is better)`);
     for (const [k, v] of Object.entries(scores)) console.log(`  ${k.padEnd(26)} ${f4(v)}`);
     console.log(`\nper held-out week: ${Object.entries(cv.folds).map(([g, x]) => `${g} ${x.brier.toFixed(4)} (n=${x.n})`).join(', ')}`);
 
-    const injuryRows = samples.filter((s) => Math.abs(s.f[3]) > 0.05).length;
-    log.info(`${injuryRows} of ${samples.length} rows had a non-zero injury term`);
+    log.info(`${injuryRows} of ${samples.length} rows had a non-zero injury term${holdC ? ' (injury weight held at its prior)' : ''}`);
     const next = {
       ...cfg,
       fitted_at: new Date().toISOString(),
@@ -126,6 +128,7 @@ if (cmd === 'fit') {
         samples: samples.length,
         weeks: Object.keys(cv.folds),
         rows_with_injury_term: injuryRows,
+        injury_weight_held_at_prior: holdC,
         unpenalised: { a0: unpenalised[0], a: unpenalised[1], b: unpenalised[2], c: unpenalised[3] },
         scores,
         folds: cv.folds,

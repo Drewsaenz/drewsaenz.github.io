@@ -45,6 +45,8 @@ export const ModelV5ConfigSchema = z.object({
   coefs: Coefs.nullable(),
   priors: Coefs,
   prior_weight: z.number().nonnegative(),
+  /** Below this many rows with a non-zero injury term, c stays at its prior (too few rows to learn it). */
+  min_injury_rows: z.number().int().nonnegative().default(100),
   fade: z.object({ full_hours: z.number().positive(), zero_hours: z.number().nonnegative() }),
   clamp: z.tuple([z.number(), z.number()]),
   fit_summary: z.record(z.string(), z.unknown()).optional(),
@@ -103,7 +105,9 @@ export interface V5Sample {
  *   sum log loss + (priorWeight / 2) * sum_i (w_i - prior_i)^2
  * by Newton's method. Any number of features; the first is the intercept.
  */
-export function fitRidgeLogistic(samples: { f: number[]; y: 0 | 1 }[], prior: number[], priorWeight: number, maxIter = 100): number[] {
+export function fitRidgeLogistic(samples: { f: number[]; y: 0 | 1 }[], prior: number[], priorWeight: number, opts: { fixed?: number[]; maxIter?: number } = {}): number[] {
+  const maxIter = opts.maxIter ?? 100;
+  const fixed = new Set(opts.fixed ?? []);
   if (samples.length < 20) throw new Error(`fitRidgeLogistic: need at least 20 samples, got ${samples.length}`);
   const n = prior.length;
   let w = [...prior];
@@ -119,6 +123,10 @@ export function fitRidgeLogistic(samples: { f: number[]; y: 0 | 1 }[], prior: nu
         g[i] += r * s.f[i];
         for (let j = 0; j < n; j++) H[i][j] += wgt * s.f[i] * s.f[j];
       }
+    }
+    for (const i of fixed) {
+      g[i] = 0;
+      for (let j = 0; j < n; j++) H[i][j] = H[j][i] = i === j ? 1 : 0;
     }
     const step = solve(H, g);
     w = w.map((v, i) => v - step[i]);
@@ -157,7 +165,7 @@ export function brierOf(samples: { f: number[]; y: 0 | 1 }[], w: number[]): numb
 }
 
 /** Leave-one-group-out: fit on every other group, score the held-out one; returns the pooled Brier. */
-export function crossValidate(samples: V5Sample[], prior: number[], priorWeight: number): { brier: number; folds: Record<string, { n: number; brier: number }> } {
+export function crossValidate(samples: V5Sample[], prior: number[], priorWeight: number, fixed: number[] = []): { brier: number; folds: Record<string, { n: number; brier: number }> } {
   const groups = [...new Set(samples.map((s) => s.group))];
   const folds: Record<string, { n: number; brier: number }> = {};
   let total = 0;
@@ -165,7 +173,7 @@ export function crossValidate(samples: V5Sample[], prior: number[], priorWeight:
     const train = samples.filter((s) => s.group !== g);
     const test = samples.filter((s) => s.group === g);
     if (train.length < 20 || test.length === 0) continue;
-    const w = fitRidgeLogistic(train, prior, priorWeight);
+    const w = fitRidgeLogistic(train, prior, priorWeight, { fixed });
     const b = brierOf(test, w);
     folds[g] = { n: test.length, brier: b };
     total += b * test.length;

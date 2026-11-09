@@ -227,6 +227,8 @@ The line, the ratings and the injury layer blended with weights fit on this proj
   strength `prior_weight`; scored leave-one-week-out next to Kalshi, Vegas, v1 and the priors alone. Writes
   `coefs` and `fitted_at`. Refuses once v5 rows exist: a refit is a new model_version. Until fitted, the snapshot
   logs v1-v4.1 and skips v5 with a warning.
+- The injury weight `c` stays at its prior until at least `min_injury_rows` (100) graded rows carry a non-zero injury term;
+  the first fit (2026-11-09) had 12 such rows and the data alone put `c` at 3.5x the prior, which is noise.
 - `npm run v5:check` previews this week's games with the injury term and its fade weight.
 - Reads v4.1's config for the injury layer, so v5 inherits v4.1's "official report first, two outlets otherwise".
 
@@ -234,7 +236,7 @@ The line, the ratings and the injury layer blended with weights fit on this proj
 
 The extractor tags every fact with which game it is about: `upcoming`, `previous` (a recap of a game already
 played: "left in the third quarter", "played through it"), `season`, or `unknown`. v2, v4, v4.1, v5 and the News
-check ignore `previous` facts. Facts stored before 2026-11-09 have `game_ref` NULL and still count. Official
+check ignore `previous` facts. Facts stored before 2026-11-09 have `game_ref` NULL and still count until `npm run news:gameref` tags them: official-report facts directly from their scope, the rest by a short classification call over their `detail` text (`classifyGameRefs`). Official
 availability-report facts are `upcoming` (or `season` when exempt-Out). Drew approved applying this to the
 existing versions too: it removes wrong data rather than changing what the models do with right data.
 

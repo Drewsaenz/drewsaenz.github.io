@@ -5,6 +5,7 @@
  *   npm run news:import  -- --in data/news-work [--model manual]
  *   npm run news:report  -- [--days 10]
  *   npm run news:restamp -- [--dir data/transcripts]
+ *   npm run news:gameref -- [--dry-run] [--model id]   tag facts stored before game_ref existed (recap vs upcoming)
  *   npm run news:players -- [--dry-run]   resolve stored player names to roster names
  *   npm run news:availability -- [--dir data/availability]   official reports saved by TranscriptGPT -> facts
  *
@@ -33,7 +34,7 @@ import { loadEnv, requireEnv } from '../src/env';
 import { log, runJob } from '../src/log';
 import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
-import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews } from '../src/news';
+import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, classifyGameRefs, tagOfficialGameRefs } from '../src/news';
 import { canonicalPlayer, indexRoster, type RosterIndex } from '../src/players';
 import { AvailabilityFileSchema, teamReportFacts } from '../src/availability';
 import { sameName } from '../src/model/v2';
@@ -296,6 +297,35 @@ if (cmd === 'extract') {
       }
     }
     log.info(`availability: ${stored} fact(s) from ${teams} team report(s); ${skipped} already stored`);
+  });
+} else if (cmd === 'gameref') {
+  runJob('news:gameref', async () => {
+    loadEnv();
+    const dryRun = flag('dry-run');
+    const model = arg('model', NEWS_MODEL)!;
+    const db = openDb();
+    const official = dryRun ? 0 : tagOfficialGameRefs(db);
+    log.info(`official report facts tagged: ${official}`);
+    const rows = db
+      .prepare(`SELECT id, detail FROM news_facts WHERE game_ref IS NULL AND model <> 'availability-report' AND detail IS NOT NULL ORDER BY id`)
+      .all() as { id: number; detail: string }[];
+    if (rows.length === 0) {
+      log.info('no untagged facts');
+      return;
+    }
+    log.info(`${rows.length} fact(s) to classify in ${Math.ceil(rows.length / 80)} call(s) (model=${model})${dryRun ? ' [dry run: no calls, no writes]' : ''}`);
+    if (dryRun) return;
+    const client = new Anthropic();
+    const { tags, input_tokens, output_tokens } = await classifyGameRefs(client, rows, model);
+    const upd = db.prepare('UPDATE news_facts SET game_ref = ? WHERE id = ? AND game_ref IS NULL');
+    const counts: Record<string, number> = {};
+    db.transaction(() => {
+      for (const [id, ref] of tags) {
+        upd.run(ref, id);
+        counts[ref] = (counts[ref] ?? 0) + 1;
+      }
+    })();
+    log.info(`tagged ${tags.size} of ${rows.length}: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}; tokens in=${input_tokens} out=${output_tokens}`);
   });
 } else if (cmd === 'players') {
   // One-time (and safe to re-run) cleanup: resolve every stored player name

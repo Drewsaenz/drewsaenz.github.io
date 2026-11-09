@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { openDb, upsertGames, type Db } from '../src/db';
+import { tagOfficialGameRefs } from '../src/news';
 import { logit } from '../src/model/v3';
 import { latestStatuses, loadModelV4Config } from '../src/model/v4';
 import { brierOf, crossValidate, fitRidgeLogistic, injuryWeight, loadModelV5Config, predictV5, type ModelV5Config, type V5Sample } from '../src/model/v5';
@@ -61,6 +62,10 @@ test('ridge fit recovers planted weights with enough data and stays at the prior
   // A huge prior weight pins the fit to the prior.
   const pinned = fitRidgeLogistic(samples, prior, 1e9);
   for (let i = 0; i < 4; i++) assert.ok(Math.abs(pinned[i] - prior[i]) < 1e-3);
+  // A held coefficient stays exactly at its prior while the others still fit.
+  const held = fitRidgeLogistic(samples, prior, 1e-6, { fixed: [3] });
+  assert.equal(held[3], prior[3]);
+  assert.ok(Math.abs(held[1] + held[2] - (truth[1] + truth[2])) < 0.1);
   // Cross-validation scores close to the in-sample fit on this much data.
   const cv = crossValidate(samples, prior, 40);
   assert.ok(Math.abs(cv.brier - brierOf(samples, w)) < 0.01);
@@ -75,6 +80,14 @@ function fact(db: Db, f: { team: string; player: string; status: string; as_of: 
      VALUES (?, 'show', 't', ?, ?, ?, ?, ?, ?, 'game', ?, 'd', 0.9, 0, '2026-11-09T00:00:00Z', 'claude-haiku-5-5')`,
   ).run(`u${Math.random()}`, f.as_of, f.team, f.team, f.player, f.position ?? 'QB', f.status, f.game_ref);
 }
+
+test('official report facts are tagged without a model call', () => {
+  const db = openDb(':memory:');
+  db.prepare(`INSERT INTO news_facts (source_url, as_of, team_raw, team, player, status, scope, extracted_at, model) VALUES ('r1', '2026-11-05T01:00:00Z', 'Texas', 'Texas', 'Trevor Goosby', 'out', 'season', 'x', 'availability-report'), ('r2', '2026-11-05T01:00:00Z', 'Texas', 'Texas', 'Colin Simmons', 'questionable', 'game', 'x', 'availability-report'), ('s1', '2026-11-05T01:00:00Z', 'Texas', 'Texas', 'Arch Manning', 'probable', 'game', 'x', 'claude-haiku-5-5')`).run();
+  assert.equal(tagOfficialGameRefs(db), 2);
+  const refs = db.prepare('SELECT player, game_ref FROM news_facts ORDER BY player').all() as { player: string; game_ref: string | null }[];
+  assert.deepEqual(refs, [{ player: 'Arch Manning', game_ref: null }, { player: 'Colin Simmons', game_ref: 'upcoming' }, { player: 'Trevor Goosby', game_ref: 'season' }]);
+});
 
 test('facts tagged as recaps of a played game do not set a player\'s status; untagged older facts still do', () => {
   const v4 = loadModelV4Config();

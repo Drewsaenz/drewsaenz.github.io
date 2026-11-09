@@ -19,6 +19,7 @@
     "news:windows": "tsx scripts/news.ts windows",
     "news:import": "tsx scripts/news.ts import",
     "news:restamp": "tsx scripts/news.ts restamp",
+    "news:gameref": "tsx scripts/news.ts gameref",
     "news:players": "tsx scripts/news.ts players",
     "news:availability": "tsx scripts/news.ts availability",
     "news:report": "tsx scripts/news.ts report",
