@@ -242,6 +242,56 @@ export async function extractFacts(client: Anthropic, meta: TranscriptMeta, ws: 
   return result;
 }
 
+const GAME_REFS = ['upcoming', 'previous', 'season', 'unknown'] as const;
+export type GameRef = (typeof GAME_REFS)[number];
+const GameRefBatch = z.object({ items: z.array(z.object({ id: z.number().int(), game_ref: z.enum(GAME_REFS) })) });
+
+const GAME_REF_SYSTEM = `You classify one-sentence college football availability notes by WHICH GAME each note is about.
+
+- "upcoming": the team's next game ("ruled out for Saturday", "expected to start against LSU", "listed questionable on this week's availability report", "will miss the game").
+- "previous": a game already played, i.e. a recap ("left the game in the third quarter", "played through an ankle injury in the win", "was out last week", "did not return", "was helped off the field").
+- "season": the rest of the season or longer ("out for the season", "season-ending surgery", "fired", "named interim head coach for the remainder of the season").
+- "unknown": cannot tell.
+
+Return one item per input id, in any order.`;
+
+/**
+ * Tag already-stored facts (written before game_ref existed) with the game
+ * they describe, from their detail text. Short inputs, so ~80 per call.
+ */
+export async function classifyGameRefs(client: Anthropic, items: { id: number; detail: string }[], model = NEWS_MODEL): Promise<{ tags: Map<number, GameRef>; input_tokens: number; output_tokens: number }> {
+  const tags = new Map<number, GameRef>();
+  let input_tokens = 0;
+  let output_tokens = 0;
+  for (let i = 0; i < items.length; i += 80) {
+    const batch = items.slice(i, i + 80);
+    const user = batch.map((x) => `${x.id}: ${x.detail.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
+    const response = await client.messages.parse({
+      model,
+      max_tokens: 8000,
+      system: GAME_REF_SYSTEM,
+      messages: [{ role: 'user', content: user }],
+      output_config: { format: zodOutputFormat(GameRefBatch), effort: 'low' },
+    });
+    input_tokens += response.usage.input_tokens;
+    output_tokens += response.usage.output_tokens;
+    if (response.stop_reason === 'refusal' || !response.parsed_output) {
+      log.warn(`news: game_ref batch ${i / 80 + 1} not classified (stop_reason=${response.stop_reason})`);
+      continue;
+    }
+    const ids = new Set(batch.map((x) => x.id));
+    for (const it of response.parsed_output.items) if (ids.has(it.id)) tags.set(it.id, it.game_ref);
+  }
+  return { tags, input_tokens, output_tokens };
+}
+
+/** Official availability-report facts need no model: upcoming, or season when stored with season scope. Returns rows updated. */
+export function tagOfficialGameRefs(db: Db): number {
+  return db
+    .prepare(`UPDATE news_facts SET game_ref = CASE WHEN scope = 'season' THEN 'season' ELSE 'upcoming' END WHERE game_ref IS NULL AND model = 'availability-report'`)
+    .run().changes;
+}
+
 // ------------------------------------------------------------ storage
 
 export interface StoredFact extends Fact {
