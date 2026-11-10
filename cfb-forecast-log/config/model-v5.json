@@ -2,9 +2,14 @@
   "model_version": "v5-fused",
   "base_model_version": "v1-blend",
   "injury_model_version": "v4.1-avail",
-  "fitted_at": null,
+  "fitted_at": "2026-11-09T20:25:53.148Z",
   "temper": 1.2433,
-  "coefs": null,
+  "coefs": {
+    "a0": 0.0013535687240094289,
+    "a": 0.8102418469175958,
+    "b": 0.13657109169760284,
+    "c": 0.14105
+  },
   "priors": {
     "a0": 0,
     "a": 0.8401,
@@ -21,5 +26,39 @@
     0.02,
     0.98
   ],
-  "_note": "v5-fused = sigmoid(a0 + a*logit(vegas) + b*logit(v1)/temper + w(h)*c*injury_points), fit on this project's own graded rows by `npm run v5:fit` (ridge toward the priors, leave-one-week-out). Priors: a and b are v3-anchor's weights written as a plain blend (1-lambda, lambda; v3's lambda already applies to the tempered logit), c is v4's logit-per-point. temper is v3's. injury_points comes from v4.1's source-layered adjustment. c stays at its prior until at least min_injury_rows graded rows carry an injury term. w(h) fades the injury term from full at 72h before kickoff to zero at kickoff, because the line absorbs injury news during the week. Approved by Drew 2026-11-09. The snapshot skips v5 with a warning until fitted_at is set; once v5 rows exist, v5:fit refuses to run and any refit is a new model_version."
+  "_note": "v5-fused = sigmoid(a0 + a*logit(vegas) + b*logit(v1)/temper + w(h)*c*injury_points), fit on this project's own graded rows by `npm run v5:fit` (ridge toward the priors, leave-one-week-out). Priors: a and b are v3-anchor's weights written as a plain blend (1-lambda, lambda; v3's lambda already applies to the tempered logit), c is v4's logit-per-point. temper is v3's. injury_points comes from v4.1's source-layered adjustment. c stays at its prior until at least min_injury_rows graded rows carry an injury term. w(h) fades the injury term from full at 72h before kickoff to zero at kickoff, because the line absorbs injury news during the week. Approved by Drew 2026-11-09. The snapshot skips v5 with a warning until fitted_at is set; once v5 rows exist, v5:fit refuses to run and any refit is a new model_version.",
+  "fit_summary": {
+    "samples": 376,
+    "weeks": [
+      "2026-09",
+      "2026-10"
+    ],
+    "rows_with_injury_term": 12,
+    "injury_weight_held_at_prior": true,
+    "unpenalised": {
+      "a0": 0.0024328529173198647,
+      "a": 0.7733888103513589,
+      "b": 0.15920294774350457,
+      "c": 0.14105
+    },
+    "scores": {
+      "v5_cv_leave_one_week_out": 0.19634693447746185,
+      "v5_in_sample": 0.19622082025544024,
+      "priors_only": 0.19635448089335333,
+      "kalshi": 0.19724195478723397,
+      "vegas": 0.19731634183451183,
+      "v1": 0.20376589259949238
+    },
+    "folds": {
+      "2026-09": {
+        "n": 138,
+        "brier": 0.18522096263343288
+      },
+      "2026-10": {
+        "n": 238,
+        "brier": 0.20279812823576437
+      }
+    },
+    "note": "Rows are this season's graded v1 Tuesday/pregame forecasts with a line. Injury term as of each snapshot (facts), weighted by today's season stats (slight hindsight)."
+  }
 }

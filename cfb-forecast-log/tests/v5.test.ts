@@ -11,10 +11,16 @@ import { game } from './helpers';
 const base = loadModelV5Config();
 const fitted: ModelV5Config = { ...base, fitted_at: '2026-11-10T00:00:00Z', coefs: { a0: 0, a: 0.8, b: 0.2, c: 0.14 } };
 
-test('config ships unfitted with v3/v4 priors and refuses nothing until fit', () => {
-  assert.equal(base.fitted_at, null);
-  assert.equal(base.coefs, null);
+test('shipped config: v3/v4 priors, fitted once, injury weight held at its prior', () => {
   assert.ok(Math.abs(base.priors.a + base.priors.b - 1) < 1e-6);
+  // First fit 2026-11-09 (Drew approved committing it before v5 rows exist; any refit is a new model_version).
+  assert.ok(base.fitted_at && !Number.isNaN(Date.parse(base.fitted_at)));
+  assert.ok(base.coefs);
+  // Too few graded rows carried an injury term, so c must still equal its prior rather than a noisy fit.
+  const summary = (base as { fit_summary?: { rows_with_injury_term?: number } }).fit_summary;
+  if ((summary?.rows_with_injury_term ?? 0) < base.min_injury_rows) assert.equal(base.coefs!.c, base.priors.c);
+  // The line carries most of the weight, the ratings a little.
+  assert.ok(base.coefs!.a > 0.5 && base.coefs!.b > 0 && base.coefs!.b < base.coefs!.a);
 });
 
 test('injury term is full early in the week and gone at kickoff', () => {
