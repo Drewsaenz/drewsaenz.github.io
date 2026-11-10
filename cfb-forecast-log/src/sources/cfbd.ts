@@ -61,8 +61,26 @@ export interface GameLines {
   game_id: number;
   /** Home-perspective spread from the preferred provider, or null if no book posted one. */
   spread: number | null;
+  /** That book's over/under, or null. */
+  total: number | null;
   provider: string | null;
 }
+
+/** SP+ offense and defense, in points a game against an average opponent. */
+export interface SpUnits {
+  /** team -> { off: points scored, def: points allowed } */
+  teams: Map<string, { off: number; def: number }>;
+  /** The national average offense rating: points an average offense scores on an average defense. */
+  avg: number;
+}
+
+const CfbdSpUnits = z.array(
+  z.object({
+    team: z.string(),
+    offense: z.object({ rating: z.number().nullable().optional() }).nullable().optional(),
+    defense: z.object({ rating: z.number().nullable().optional() }).nullable().optional(),
+  }),
+);
 
 export type TeamRatings = Map<string, number>;
 
@@ -152,7 +170,7 @@ export class CfbdClient {
     const raw = await this.get('/lines', params, CfbdLines, ttl);
     return raw.map((g) => {
       const pick = pickLine(g.lines, this.cfg.line_provider_priority);
-      return { game_id: g.id, spread: pick?.spread ?? null, provider: pick?.provider ?? null };
+      return { game_id: g.id, spread: pick?.spread ?? null, total: pick?.overUnder ?? null, provider: pick?.provider ?? null };
     });
   }
 
@@ -160,6 +178,22 @@ export class CfbdClient {
     const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const raw = await this.get('/ratings/sp', { year: season }, CfbdSp, ttl);
     return toMap(raw.filter((r) => r.team !== 'nationalAverages').map((r) => [r.team, r.rating]));
+  }
+
+  /** SP+ offense and defense ratings (the same /ratings/sp call as sp(), so no extra budget when cached). */
+  async spUnits(season: number, historical = false): Promise<SpUnits> {
+    const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
+    const raw = await this.get('/ratings/sp', { year: season }, CfbdSpUnits, ttl);
+    const avgRow = raw.find((r) => r.team === 'nationalAverages');
+    const avg = avgRow?.offense?.rating;
+    if (typeof avg !== 'number') throw new Error(`CFBD /ratings/sp ${season} has no nationalAverages offense rating`);
+    const teams = new Map<string, { off: number; def: number }>();
+    for (const r of raw) {
+      const off = r.offense?.rating;
+      const def = r.defense?.rating;
+      if (r.team !== 'nationalAverages' && typeof off === 'number' && typeof def === 'number') teams.set(r.team, { off, def });
+    }
+    return { teams, avg };
   }
 
   async fpi(season: number, historical = false): Promise<TeamRatings> {

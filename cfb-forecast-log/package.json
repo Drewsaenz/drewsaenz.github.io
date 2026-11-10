@@ -31,6 +31,7 @@
     "v5:fit": "tsx scripts/v5.ts fit",
     "v5:check": "tsx scripts/v5.ts check",
     "fit": "tsx scripts/fit.ts",
+    "export": "tsx scripts/export.ts",
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",
     "typecheck": "tsc --noEmit",

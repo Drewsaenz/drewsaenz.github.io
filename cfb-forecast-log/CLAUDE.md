@@ -261,6 +261,14 @@ Every job is idempotent: re-running it in the same window must not create
 duplicate rows (enforce with a UNIQUE index on
 `(game_id, ticker, snapshot_kind, model_version)` for non-manual kinds).
 
+### `export` (on demand; Drew's season book runs it)
+
+`npm run export -- --team Texas --out <file.json>` (`scripts/export.ts`, math in `src/projection.ts`): the team's remaining
+regular-season games with win probability and a projected score, for `~/Desktop/Home/stat-dash` (`npm run forecast` there).
+Writes no rows. Probability = latest scheduled v4-avail row for the game if logged, else v1-blend on the latest ratings week.
+Margin = sd 13.5 normal quantile of that probability; total = Vegas over/under when posted, else SP+ off + opp SP+ def - national
+average, both sides (checked 2026-11-05 on 96 posted totals: bias -0.2, MAE 4.1). Exports probabilities and scores only, never FEI numbers.
+
 ## Scoring (`src/score.ts`)
 
 Compute per `snapshot_kind` and per `model_version`, over resolved,
