@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canonicalPlayer, indexRoster } from '../src/players';
+import { canonicalPlayer, factPositionOf, indexRoster, rosterMatch } from '../src/players';
 
 const roster = indexRoster([
   { team: 'Mississippi State', first: 'AJ', last: 'Swann', position: 'QB' },
@@ -14,6 +14,7 @@ const roster = indexRoster([
   { team: 'Texas', first: 'Graceson', last: 'Littleton', position: 'DB' },
   { team: 'Texas', first: 'Trevor', last: 'Goosby', position: 'OL' },
   { team: 'Texas', first: 'Kaliq', last: 'Lockett', position: 'WR' },
+  { team: 'Texas', first: 'Hollywood', last: 'Smothers', position: 'RB' },
 ]);
 
 const c = (team: string, spoken: string, pos: string | null) => canonicalPlayer(roster, team, spoken, pos);
@@ -58,8 +59,21 @@ test('no match, unknown team, or a coach: no change', () => {
   assert.equal(canonicalPlayer(roster, 'Texas', null, 'WR'), null);
 });
 
-test('a position that rules out the only last-name match does not guess', () => {
-  assert.equal(c('Texas', 'Goosby', 'QB'), null);
+test('a bare last name only one teammate has wins over a wrong position label', () => {
+  assert.equal(c('Texas', 'Goosby', 'QB'), 'Trevor Goosby');
+  assert.equal(c('Texas', 'Smothers', 'QB'), 'Hollywood Smothers');
+});
+
+test('split or garbled first names are compared as one word', () => {
+  assert.equal(c('Texas', 'Ollie Wood Smothers', 'QB'), 'Hollywood Smothers');
+});
+
+test('a resolved player carries his roster position', () => {
+  const p = rosterMatch(roster, 'Texas', 'Smothers', 'QB')!;
+  assert.equal(factPositionOf(p.position), 'RB');
+  assert.equal(factPositionOf('EDGE'), 'EDGE');
+  assert.equal(factPositionOf('CB'), 'DB');
+  assert.equal(factPositionOf('LS'), null);
 });
 
 test('a full-name match wins over a wrong position label', () => {

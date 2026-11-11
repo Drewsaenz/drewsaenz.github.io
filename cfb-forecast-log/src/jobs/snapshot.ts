@@ -21,6 +21,7 @@ import { loadModelV5Config, predictV5 } from '../model/v5';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
 import { seasonContext } from './context';
+import { saveStarters } from '../news';
 
 const PREGAME_WINDOW_MS = 90 * 60_000;
 
@@ -201,6 +202,7 @@ runJob(`snapshot:${kind}`, async () => {
   db.transaction(() => {
     upsertGames(db, games);
     upsertMarkets(db, selected.map((m) => ({ ticker: m.ticker, game_id: m.game.game_id, yes_team: m.yes_team, close_utc: m.close_utc })));
+    saveStarters(db, season, starters.values()); // who starts, for the board's QB flags
     for (const r of rows) inserted += insert.run(r).changes;
   })();
   log.info(`forecasts: ${inserted} inserted, ${rows.length - inserted} already present (idempotent); CFBD calls this run: ${cfbd.callCount}`);

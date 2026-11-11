@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { openDb, upsertGames } from '../src/db';
-import { AVAILABILITY_RE, alreadyProcessed, batchWindows, parseTranscript, qbFlags, relevantWindows, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, windows, type Fact } from '../src/news';
+import { AVAILABILITY_RE, alreadyProcessed, batchWindows, parseTranscript, qbFlags, relevantWindows, resolveFactTeams, restampFacts, saveStarters, sha1, storeFacts, teamNews, windows, type Fact } from '../src/news';
 import { game } from './helpers';
 
 const md = fs.readFileSync(path.join(__dirname, 'fixtures', 'transcript-sample.md'), 'utf8');
@@ -118,4 +118,23 @@ test('parseTranscript falls back to paragraphs for untimed articles', () => {
   const ws = relevantWindows(t.lines);
   assert.equal(ws.length, 1);
   assert.match(ws[0].text, /miss two to three weeks/);
+});
+
+test('qbFlags: starter only, latest status wins, and nothing from before the previous game', () => {
+  const db = openDb(':memory:');
+  upsertGames(db, [
+    game({ game_id: 10, season: 2026, week: 10, home_team: 'Wisconsin', away_team: 'Rutgers', kickoff_utc: '2026-11-07T21:15:00Z' }),
+    game({ game_id: 11, season: 2026, week: 11, home_team: 'Rutgers', away_team: 'Nebraska', kickoff_utc: '2026-11-14T17:30:00Z' }),
+  ]);
+  saveStarters(db, 2026, [{ team: 'Rutgers', player: 'Dylan Lonergan', attempts: 200, share: 0.52 }]);
+  const put = (player: string, status: string, as_of: string, game_ref = 'upcoming') =>
+    db.prepare(`INSERT INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, position, status, scope, detail, confidence, timestamp_sec, extracted_at, model, game_ref)
+      VALUES (?, 'c', 't', ?, 'Rutgers', 'Rutgers', ?, 'QB', ?, 'game', '', 1, 0, 'x', 'm', ?)`).run(`u${Math.random()}`, as_of, player, status, game_ref);
+  put('Dylan Lonergan', 'out', '2026-11-07T15:00:00Z'); // last week's game: before the previous kickoff
+  put('Backup Guy', 'out', '2026-11-09T12:00:00Z'); // a backup
+  assert.equal(qbFlags(db).get(11), undefined);
+  put('Dylan Lonergan', 'out', '2026-11-09T12:00:00Z');
+  assert.deepEqual(qbFlags(db).get(11), ['Rutgers QB Dylan Lonergan out']);
+  put('Dylan Lonergan', 'questionable', '2026-11-11T12:00:00Z'); // newer status replaces it
+  assert.equal(qbFlags(db).get(11), undefined);
 });

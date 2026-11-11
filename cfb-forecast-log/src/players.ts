@@ -13,6 +13,8 @@
  *  3. If a first name was spoken, keep candidates whose first name is within
  *     two edits or starts with the same sound (when that leaves anyone).
  *  4. Exactly one candidate left -> its roster name. Otherwise no change.
+ *  A bare last name only one player on the team has resolves to him whatever the
+ *  position label says, and a resolved fact takes the roster's position.
  *
  * Rule 3 falls back rather than rejecting, so "Billy Puckett" still resolves
  * to the only Puckett at QB. Two Colemans on the line stay unresolved.
@@ -81,7 +83,29 @@ export function fullName(p: RosterPlayer): string {
   return `${p.first} ${p.last}`.trim();
 }
 
-export function canonicalPlayer(roster: RosterIndex, team: string | null, spoken: string | null, position: string | null): string | null {
+/** Roster position code -> the fact position enum (null when it maps to nothing useful). */
+const FACT_POSITION: Record<string, string> = {
+  QB: 'QB', RB: 'RB', FB: 'RB', WR: 'WR', TE: 'TE',
+  OL: 'OL', OT: 'OL', G: 'OL', OG: 'OL', C: 'OL', IOL: 'OL',
+  DL: 'DL', DT: 'DL', DE: 'DL', NT: 'DL', EDGE: 'EDGE',
+  LB: 'LB', DB: 'DB', CB: 'DB', S: 'DB', PK: 'K', K: 'K', P: 'P',
+};
+export function factPositionOf(rosterPosition: string | null): string | null {
+  return (rosterPosition && FACT_POSITION[rosterPosition.toUpperCase()]) || null;
+}
+
+/** First names as one word ("Ollie Wood" vs "Hollywood"), allowing more edits for longer names. */
+function firstNamesMatch(spokenFirst: string[], rosterFirst: string): boolean {
+  const r = nameTokens(rosterFirst);
+  if (r.length === 0 || spokenFirst.length === 0) return false;
+  if (editDistance(r[0], spokenFirst[0]) <= 2 || sound(r[0])[0] === sound(spokenFirst[0])[0]) return true;
+  const a = r.join('');
+  const b = spokenFirst.join('');
+  return editDistance(a, b) <= Math.max(2, Math.floor(Math.max(a.length, b.length) / 3));
+}
+
+/** The roster player a spoken name refers to, or null when it is not clear (see the rules at the top). */
+export function rosterMatch(roster: RosterIndex, team: string | null, spoken: string | null, position: string | null): RosterPlayer | null {
   if (!team || !spoken || position === 'coach') return null;
   const players = roster.get(team);
   if (!players) return null;
@@ -96,6 +120,9 @@ export function canonicalPlayer(roster: RosterIndex, team: string | null, spoken
     return Math.min(rLast.length, sLast.length) >= 4 && editDistance(rLast, sLast) <= 1;
   });
   if (cands.length === 0) return null;
+  // A bare last name that only one player on the team has is that player, whatever
+  // position the extractor guessed ("Smothers" labeled QB is the running back).
+  if (tokens.length === 1 && cands.length === 1 && lastNameCount(players, sLast) === 1) return cands[0];
 
   const group = position ? GROUPS[position] : undefined;
   if (group && cands.length > 1) {
@@ -104,11 +131,7 @@ export function canonicalPlayer(roster: RosterIndex, team: string | null, spoken
   }
   let firstMatched = false;
   if (tokens.length > 1) {
-    const sFirst = tokens[0];
-    const byFirst = cands.filter((p) => {
-      const rFirst = nameTokens(p.first)[0] ?? '';
-      return rFirst !== '' && (editDistance(rFirst, sFirst) <= 2 || sound(rFirst)[0] === sound(sFirst)[0]);
-    });
+    const byFirst = cands.filter((p) => firstNamesMatch(tokens.slice(0, -1), p.first));
     if (byFirst.length > 0) {
       cands = byFirst;
       firstMatched = true;
@@ -124,5 +147,10 @@ export function canonicalPlayer(roster: RosterIndex, team: string | null, spoken
   // matched too: a full-name match outranks an extraction's position label.
   const only = cands[0];
   if (!firstMatched && group && only.position !== null && !group.includes(only.position)) return null;
-  return fullName(only);
+  return only;
+}
+
+export function canonicalPlayer(roster: RosterIndex, team: string | null, spoken: string | null, position: string | null): string | null {
+  const p = rosterMatch(roster, team, spoken, position);
+  return p ? fullName(p) : null;
 }

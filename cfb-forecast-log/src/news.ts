@@ -17,7 +17,8 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { Db } from './db';
 import { log } from './log';
-import { canonicalPlayer, type RosterIndex } from './players';
+import { sameName } from './model/v2';
+import { factPositionOf, fullName, rosterMatch, type RosterIndex } from './players';
 import { resolveTeam } from './teams';
 
 export const NEWS_MODEL = 'claude-opus-5-5';
@@ -303,8 +304,11 @@ export interface StoredFact extends Fact {
 /** Replace each fact's player with the team's roster name where it resolves (see src/players.ts). */
 export function resolveFactPlayers(facts: StoredFact[], roster: RosterIndex): StoredFact[] {
   return facts.map((f) => {
-    const name = canonicalPlayer(roster, f.team_resolved, f.player, f.position);
-    return { ...f, player_raw: f.player, player: name ?? f.player };
+    const p = rosterMatch(roster, f.team_resolved, f.player, f.position);
+    if (!p) return { ...f, player_raw: f.player };
+    // The roster's position beats the extractor's guess (a caption-garbled running back labeled QB).
+    const pos = (factPositionOf(p.position) as Fact['position'] | null) ?? f.position;
+    return { ...f, player_raw: f.player, player: fullName(p), position: pos };
   });
 }
 
@@ -443,24 +447,71 @@ export function teamNews(db: Db, fromIso: string, toIso: string): TeamNews[] {
   return [...byTeam.values()];
 }
 
+/** Store each team's starting QB (from startersFromAttempts) so DB-only readers like qbFlags know who starts. */
+export function saveStarters(db: Db, season: number, starters: Iterable<{ team: string; player: string; attempts: number; share: number }>, at = new Date().toISOString()): number {
+  const up = db.prepare(`INSERT INTO qb_starters (season, team, player, attempts, share, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(season, team) DO UPDATE SET player = excluded.player, attempts = excluded.attempts, share = excluded.share, updated_at = excluded.updated_at`);
+  let n = 0;
+  for (const s of starters) n += up.run(season, s.team, s.player, Math.round(s.attempts), s.share, at).changes;
+  return n;
+}
+
+const QB_WEIGHT: Record<string, number> = { out: 4, doubtful: 3, questionable: 2, limited: 1 };
+
 /**
- * Pre-kickoff quarterback availability flags per game: a QB listed out or
- * doubtful for either team by a show recorded before kickoff.
+ * Pre-kickoff quarterback availability flags per game, for the board and the
+ * report's News check: a team's starting QB whose latest status before kickoff
+ * is out or doubtful.
+ *
+ * - Only facts said after the team's previous game kicked off count (or season-
+ *   long statuses from this season), so last week's report can't flag this week.
+ * - The latest fact per player wins, so "out" followed by "available" clears it.
+ * - Recaps of a game already played (game_ref "previous") are ignored.
+ * - When qb_starters knows the team's starter, only he is flagged; backups being
+ *   out don't matter. With no starter on file, any QB counts (old behaviour).
  */
 export function qbFlags(db: Db): Map<number, string[]> {
   const rows = db
     .prepare(
-      `SELECT g.game_id, n.team, n.player, n.status
+      `SELECT g.game_id, g.season, g.kickoff_utc, n.team, n.player, n.status, n.scope, n.as_of,
+              (SELECT MAX(p.kickoff_utc) FROM games p WHERE n.team IN (p.home_team, p.away_team) AND p.kickoff_utc < g.kickoff_utc) AS prev_kick
          FROM games g JOIN news_facts n ON n.team IN (g.home_team, g.away_team)
-        WHERE n.position = 'QB' AND n.status IN ('out', 'doubtful') AND COALESCE(n.game_ref, '') <> 'previous'
-          AND n.as_of < g.kickoff_utc AND n.as_of >= datetime(g.kickoff_utc, '-8 days')
-        GROUP BY g.game_id, n.team, n.player, n.status`,
+        WHERE n.position = 'QB' AND n.player IS NOT NULL AND n.status <> 'unknown' AND COALESCE(n.game_ref, '') <> 'previous'
+          AND n.as_of < g.kickoff_utc AND n.as_of >= datetime(g.kickoff_utc, '-30 days')
+        ORDER BY g.game_id, n.team, n.as_of DESC`,
     )
-    .all() as { game_id: number; team: string; player: string | null; status: string }[];
-  const out = new Map<number, string[]>();
+    .all() as { game_id: number; season: number; kickoff_utc: string; team: string; player: string; status: string; scope: string | null; as_of: string; prev_kick: string | null }[];
+  const starterStmt = db.prepare(`SELECT player FROM qb_starters WHERE season = ? AND team = ?`);
+  const starters = new Map<string, string | null>();
+  const starterOf = (season: number, team: string) => {
+    const k = `${season}|${team}`;
+    if (!starters.has(k)) starters.set(k, (starterStmt.get(season, team) as { player: string } | undefined)?.player ?? null);
+    return starters.get(k)!;
+  };
+  // game|team -> player groups (latest first)
+  const groups = new Map<string, { game_id: number; team: string; season: number; facts: typeof rows }[]>();
   for (const r of rows) {
-    if (!out.has(r.game_id)) out.set(r.game_id, []);
-    out.get(r.game_id)!.push(`${r.team} QB ${r.player ?? ''} ${r.status}`.replace(/\s+/g, ' ').trim());
+    const since = r.prev_kick ?? new Date(Date.parse(r.kickoff_utc) - 8 * 86_400_000).toISOString();
+    const fresh = Date.parse(r.as_of) > Date.parse(since) || (r.scope === 'season' && r.as_of.slice(0, 4) === String(r.season));
+    if (!fresh) continue;
+    const key = `${r.game_id}|${r.team}`;
+    if (!groups.has(key)) groups.set(key, []);
+    const list = groups.get(key)!;
+    const g = list.find((x) => x.facts[0].player === r.player || sameName(x.facts[0].player, r.player));
+    if (g) g.facts.push(r);
+    else list.push({ game_id: r.game_id, team: r.team, season: r.season, facts: [r] });
+  }
+  const out = new Map<number, string[]>();
+  for (const list of groups.values()) {
+    for (const g of list) {
+      const starter = starterOf(g.season, g.team);
+      if (starter && !(g.facts[0].player === starter || sameName(g.facts[0].player, starter))) continue;
+      const latest = g.facts.filter((f) => f.as_of === g.facts[0].as_of);
+      const pick = latest.reduce((a, b) => ((QB_WEIGHT[b.status] ?? 0) > (QB_WEIGHT[a.status] ?? 0) ? b : a));
+      if (pick.status !== 'out' && pick.status !== 'doubtful') continue;
+      if (!out.has(g.game_id)) out.set(g.game_id, []);
+      out.get(g.game_id)!.push(`${g.team} QB ${starter ?? pick.player} ${pick.status}`.replace(/\s+/g, ' ').trim());
+    }
   }
   return out;
 }

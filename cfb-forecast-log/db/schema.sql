@@ -143,3 +143,15 @@ CREATE TABLE IF NOT EXISTS news_runs (
   processed_at  TEXT NOT NULL,
   model         TEXT NOT NULL
 );
+
+-- Each team's starting QB (season pass-attempt leader with >= 40% of attempts), refreshed by every
+-- snapshot run and by `npm run starters`. Read by qbFlags so the board flags the starter only.
+CREATE TABLE IF NOT EXISTS qb_starters (
+  season      INTEGER NOT NULL,
+  team        TEXT NOT NULL,
+  player      TEXT NOT NULL,
+  attempts    INTEGER NOT NULL,
+  share       REAL NOT NULL,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (season, team)
+);

@@ -6,7 +6,7 @@
  *   npm run news:report  -- [--days 10]
  *   npm run news:restamp -- [--dir data/transcripts]
  *   npm run news:gameref -- [--dry-run] [--model id]   tag facts stored before game_ref existed (recap vs upcoming)
- *   npm run news:players -- [--dry-run]   resolve stored player names to roster names
+ *   npm run news:players -- [--dry-run]   resolve stored player names (and positions) to the roster
  *   npm run news:availability -- [--dir data/availability]   official reports saved by TranscriptGPT -> facts
  *
  * restamp: after the scraper backfills `published:` into transcripts that were
@@ -35,7 +35,7 @@ import { log, runJob } from '../src/log';
 import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
 import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, classifyGameRefs, tagOfficialGameRefs } from '../src/news';
-import { canonicalPlayer, indexRoster, type RosterIndex } from '../src/players';
+import { canonicalPlayer, factPositionOf, fullName, indexRoster, rosterMatch, type RosterIndex } from '../src/players';
 import { AvailabilityFileSchema, teamReportFacts } from '../src/availability';
 import { sameName } from '../src/model/v2';
 import { resolveTeam } from '../src/teams';
@@ -340,7 +340,7 @@ if (cmd === 'extract') {
       .prepare(`SELECT id, source_url, team_raw, team, player, player_raw, position, status FROM news_facts WHERE player IS NOT NULL AND team IS NOT NULL ORDER BY id`)
       .all() as { id: number; source_url: string; team_raw: string; team: string; player: string; player_raw: string | null; position: string | null; status: string }[];
     const clash = db.prepare(`SELECT id FROM news_facts WHERE source_url = ? AND team_raw = ? AND player = ? AND status = ? AND id <> ?`);
-    const rename = db.prepare(`UPDATE news_facts SET player = ?, player_raw = COALESCE(player_raw, ?) WHERE id = ?`);
+    const rename = db.prepare(`UPDATE news_facts SET player = ?, player_raw = COALESCE(player_raw, ?), position = ? WHERE id = ?`);
     const drop = db.prepare(`DELETE FROM news_facts WHERE id = ?`);
     const keepRaw = db.prepare(`UPDATE news_facts SET player_raw = player WHERE player_raw IS NULL AND player IS NOT NULL`);
     const changes = new Map<string, number>();
@@ -348,16 +348,19 @@ if (cmd === 'extract') {
     let merged = 0;
     db.transaction(() => {
       for (const r of rows) {
-        const name = canonicalPlayer(roster, r.team, r.player, r.position);
-        if (!name || name === r.player) continue;
-        const key = `${r.team}: ${r.player} -> ${name}`;
+        const match = rosterMatch(roster, r.team, r.player, r.position);
+        if (!match) continue;
+        const name = fullName(match);
+        const pos = factPositionOf(match.position) ?? r.position;
+        if (name === r.player && pos === r.position) continue;
+        const key = `${r.team}: ${r.player}${r.position && pos !== r.position ? ` [${r.position}]` : ''} -> ${name}${pos !== r.position ? ` [${pos}]` : ''}`;
         changes.set(key, (changes.get(key) ?? 0) + 1);
         if (dryRun) continue;
         if (clash.get(r.source_url, r.team_raw, name, r.status, r.id)) {
           drop.run(r.id);
           merged += 1;
         } else {
-          rename.run(name, r.player, r.id);
+          rename.run(name, r.player, pos, r.id);
           renamed += 1;
         }
       }
