@@ -5,7 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadScoringConfig } from '../config';
+import { DEFAULT_FOCUS_MODELS, loadScoringConfig } from '../config';
 import { openDb } from '../db';
 import { loadEnv } from '../env';
 import { log, runJob } from '../log';
@@ -13,6 +13,14 @@ import { REPORTS_DIR } from '../paths';
 import { isoWeekLabel } from '../season';
 import { qbFlags } from '../news';
 import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, newsCheck, type ScoreRow } from '../score';
+
+/** Short role label for a focus model's heading. */
+function focusRole(model: string): string {
+  if (model.startsWith('v5')) return 'main model';
+  if (model.startsWith('v3')) return 'market baseline';
+  if (model.startsWith('v1')) return 'raw ratings';
+  return 'focus';
+}
 
 export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = new Date(), flags: Map<number, string[]> = new Map()): string {
   const out: string[] = [];
@@ -26,8 +34,19 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
   const money = (x: number) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`;
   const summaries: string[] = [];
 
-  for (const [model, modelRows] of groupBy(rows, (r) => r.model_version)) {
-    out.push(`## Model ${model}`, '');
+  // Focus models first, in the configured order; every other model after a divider, still scored in full.
+  const focus = cfg.focus_models ?? DEFAULT_FOCUS_MODELS;
+  const rank = (m: string) => (focus.includes(m) ? focus.indexOf(m) : focus.length);
+  const groups = [...groupBy(rows, (r) => r.model_version)].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  const others = groups.map(([m]) => m).filter((m) => !focus.includes(m));
+  let dividerDone = false;
+  for (const [model, modelRows] of groups) {
+    const isFocus = focus.includes(model);
+    if (!isFocus && !dividerDone && groups.some(([m]) => focus.includes(m))) {
+      out.push('---', '', `## Also logged, not read: ${others.join(', ')}`, '', '_Still scored for the record. The summary covers the focus models only._', '');
+      dividerDone = true;
+    }
+    out.push(`## Model ${model}${isFocus ? ` (${focusRole(model)})` : ''}`, '');
     const byKind = groupBy(modelRows, (r) => r.snapshot_kind);
 
     // 1. Accuracy
@@ -86,7 +105,8 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
       out.push('');
     }
 
-    // Summary lines
+    // Summary lines: focus models only (all models when none of the focus models has graded rows yet).
+    if (!isFocus && groups.some(([m]) => focus.includes(m))) continue;
     // Headline rows: Tuesday when the model has them; otherwise (a model added mid-week) its pregame rows.
     const kindUsed = byKind.has('tuesday') ? 'tuesday' : byKind.has('pregame') ? 'pregame' : null;
     const kindLabel = kindUsed === 'pregame' ? 'pregame (kickoff)' : 'Tuesday';
@@ -115,6 +135,7 @@ export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = n
     }
   }
 
+  if (others.length && groups.some(([m]) => focus.includes(m))) summaries.push(`Also logged, not read: ${others.join(', ')} (full tables above the summary).`);
   out.push('## Summary', '', ...summaries.map((s) => `- ${s}`), '');
   return out.join('\n');
 }

@@ -269,6 +269,13 @@ Writes no rows. Probability = latest scheduled v4-avail row for the game if logg
 Margin = sd 13.5 normal quantile of that probability; total = Vegas over/under when posted, else SP+ off + opp SP+ def - national
 average, both sides (checked 2026-11-05 on 96 posted totals: bias -0.2, MAE 4.1). Exports probabilities and scores only, never FEI numbers.
 
+### Which models to read (Drew, 2026-11-09)
+
+Read three: **v5-fused** (main model), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
+(v2, v4, v4.1) keep logging but are not read. The weekly report puts the three first, summarizes only them, and
+scores the rest below an "Also logged, not read" divider (`focus_models` in config/scoring.json overrides the
+default list in `src/config.ts`). The tracker board shows v5 as "the model" once its rows exist.
+
 ## Scoring (`src/score.ts`)
 
 Compute per `snapshot_kind` and per `model_version`, over resolved,
