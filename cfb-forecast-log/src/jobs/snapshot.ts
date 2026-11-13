@@ -18,6 +18,8 @@ import { assertV3Fitted, loadModelV3Config, predictV3 } from '../model/v3';
 import { loadModelV4Config, predictV4, type TeamAdjustment } from '../model/v4';
 import { adjustmentFor, describe, loadV4Inputs } from '../model/v4-inputs';
 import { loadModelV5Config, predictV5 } from '../model/v5';
+import { freshAdjustment } from '../model/v51';
+import { weeksMissed } from '../model/v4';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
 import { seasonContext } from './context';
@@ -57,6 +59,11 @@ runJob(`snapshot:${kind}`, async () => {
   const v5 = v5cfg.fitted_at && v5cfg.coefs ? v5cfg : null;
   if (!v5) log.warn(`config/model-v5.json is not fitted yet; run \`npm run v5:fit\`. No ${v5cfg.model_version} rows this snapshot.`);
   else if (v5.injury_model_version !== v41.model_version) throw new Error(`model-v5.json expects injury model ${v5.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
+  // v5.1: v5's weights, injury term limited to news since each team's previous game.
+  const v51cfg = loadModelV5Config('model-v5.1.json');
+  const v51 = v51cfg.fitted_at && v51cfg.coefs ? v51cfg : null;
+  if (!v51) log.warn(`config/model-v5.1.json has no coefficients; no ${v51cfg.model_version} rows this snapshot.`);
+  else if (v51.injury_model_version !== v41.model_version) throw new Error(`model-v5.1.json expects injury model ${v51.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -125,6 +132,14 @@ runJob(`snapshot:${kind}`, async () => {
     if (!adj41.has(team)) adj41.set(team, adjustmentFor(db, v41, v4Inputs!, v4Starters, team, at));
     return adj41.get(team)!;
   };
+  const adj51 = new Map<string, TeamAdjustment>();
+  const adjFor51 = (team: string, at: string) => {
+    if (!adj51.has(team)) {
+      const st = v4Starters.get(team);
+      adj51.set(team, freshAdjustment(db, v41, adjFor41(team, at), at, st ? weeksMissed(v4Inputs!.weekly, team, st.player) : 0));
+    }
+    return adj51.get(team)!;
+  };
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
@@ -177,10 +192,16 @@ runJob(`snapshot:${kind}`, async () => {
       p5 = predictV5(v5, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: a41o.points - a41y.points, hoursToKickoff: hours });
       rows.push({ ...v1Row, model_version: v5.model_version, my_prob: p5 });
     }
+    let p51: number | null = null;
+    if (v51) {
+      const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
+      p51 = predictV5(v51, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: adjFor51(opponent, snapshot_utc).points - adjFor51(m.yes_team, snapshot_utc).points, hoursToKickoff: hours });
+      rows.push({ ...v1Row, model_version: v51.model_version, my_prob: p51 });
+    }
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${p51 === null ? '' : ` v5.1=${p51.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }

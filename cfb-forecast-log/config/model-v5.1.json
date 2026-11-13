@@ -1,0 +1,34 @@
+{
+  "model_version": "v5.1-fused",
+  "base_model_version": "v1-blend",
+  "injury_model_version": "v4.1-avail",
+  "fitted_at": "2026-11-09T20:25:53.148Z",
+  "temper": 1.2433,
+  "coefs": {
+    "a0": 0.0013535687240094289,
+    "a": 0.8102418469175958,
+    "b": 0.13657109169760284,
+    "c": 0.14105
+  },
+  "priors": {
+    "a0": 0,
+    "a": 0.8401,
+    "b": 0.1599,
+    "c": 0.14105
+  },
+  "prior_weight": 40,
+  "min_injury_rows": 100,
+  "fade": {
+    "full_hours": 72,
+    "zero_hours": 0
+  },
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v5.1-fused = v5-fused's formula and fitted coefficients (copied from model-v5.json, fit 2026-11-09), with the injury term limited to news since each team's previous game (src/model/v51.ts): a starting QB who already missed that game, players already listed out/doubtful for it, and coaching changes reported before it are dropped, because the line has priced them. Motivated by week 11, where v5's edges on USC, Auburn and Michigan came from two- and three-week-old news. Approved by Drew 2026-11-12. Any change after v5.1 rows exist is a new model_version.",
+  "fit_summary": {
+    "copied_from": "v5-fused",
+    "note": "Same coefficients as v5; c was held at its prior in that fit, so nothing in it was learned from the stale-news term this version drops."
+  }
+}

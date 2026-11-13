@@ -59,13 +59,13 @@ test('buildReport renders sections and a 3-line summary', () => {
 test('buildReport leads with the focus models and summarizes only them', () => {
   const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10, news_gap_min: 0.1 };
   const row = (model_version: string, my_prob: number) => ({ game_id: 1, ticker: 'A', snapshot_kind: 'pregame', model_version, my_prob, market_mid: 0.6, vegas_prob: 0.62, yes_bid: 58, yes_ask: 62, outcome: 1 as const });
-  const md = buildReport([row('v2-qb', 0.7), row('v1-blend', 0.7), row('v4-avail', 0.7), row('v3-anchor', 0.61), row('v5-fused', 0.64)], cfg, new Date('2026-11-16T12:00:00Z'));
+  const md = buildReport([row('v2-qb', 0.7), row('v1-blend', 0.7), row('v4-avail', 0.7), row('v3-anchor', 0.61), row('v5-fused', 0.64), row('v5.1-fused', 0.62)], cfg, new Date('2026-11-16T12:00:00Z'));
   const heads = [...md.matchAll(/^## (Model \S+|Also logged)/gm)].map((m) => m[1]);
-  assert.deepEqual(heads, ['Model v5-fused', 'Model v3-anchor', 'Model v1-blend', 'Also logged', 'Model v2-qb', 'Model v4-avail']);
-  assert.match(md, /## Model v5-fused \(main model\)/);
+  assert.deepEqual(heads, ['Model v5.1-fused', 'Model v3-anchor', 'Model v1-blend', 'Also logged', 'Model v2-qb', 'Model v4-avail', 'Model v5-fused']);
+  assert.match(md, /## Model v5.1-fused \(main model\)/);
   const summary = md.split('## Summary')[1];
-  assert.ok(!/v2-qb:|v4-avail:/.test(summary), 'non-focus models are not summarized');
-  assert.match(summary, /Also logged, not read: v2-qb, v4-avail/);
+  assert.ok(!/v2-qb:|v4-avail:|v5-fused:/.test(summary), 'non-focus models are not summarized');
+  assert.match(summary, /Also logged, not read: v2-qb, v4-avail, v5-fused/);
   // Before any focus model has graded rows, everything is summarized as before.
   const only = buildReport([row('v2-qb', 0.7)], cfg, new Date('2026-11-16T12:00:00Z'));
   assert.match(only.split('## Summary')[1], /v2-qb:/);

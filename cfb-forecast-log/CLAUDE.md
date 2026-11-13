@@ -232,6 +232,18 @@ The line, the ratings and the injury layer blended with weights fit on this proj
 - `npm run v5:check` previews this week's games with the injury term and its fade weight.
 - Reads v4.1's config for the injury layer, so v5 inherits v4.1's "official report first, two outlets otherwise".
 
+## Model v5.1 (`src/model/v51.ts`, `model_version = 'v5.1-fused'`, approved by Drew 2026-11-12)
+
+v5's formula and fitted coefficients (`config/model-v5.1.json` copies them), with the injury term limited to
+news the line is unlikely to have priced: from v4.1's adjustment it drops a starting QB who already missed the
+team's previous game (CFBD weekly passing), any player already listed out/doubtful for that game (a fact within
+10 days before its kickoff, or a season-long status stated before it), and coaching changes reported before it.
+Caps are re-applied. Week 11 motivation: v5's edges on USC, Auburn and Michigan came from two- and three-week-old
+news (a benching stored as "limited", Kamario Taylor out since October, Oregon's OC fired Oct 24). v5.1 is now the
+main model (board and report); v5 keeps logging under "Also logged". Same day: `coachRole` reads "head coach X
+fired his coordinator" as a coordinator change (it had been a head-coach change, costing a point); that fix
+applies to v4, v4.1, v5 and v5.1 as a wrong-data fix.
+
 ### Fact timing (`game_ref`, 2026-11-09)
 
 The extractor tags every fact with which game it is about: `upcoming`, `previous` (a recap of a game already
@@ -271,7 +283,7 @@ average, both sides (checked 2026-11-05 on 96 posted totals: bias -0.2, MAE 4.1)
 
 ### Which models to read (Drew, 2026-11-09)
 
-Read three: **v5-fused** (main model), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
+Read three: **v5.1-fused** (main model; v5-fused until 2026-11-12), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
 (v2, v4, v4.1) keep logging but are not read. The weekly report puts the three first, summarizes only them, and
 scores the rest below an "Also logged, not read" divider (`focus_models` in config/scoring.json overrides the
 default list in `src/config.ts`). The tracker board shows v5 as "the model" once its rows exist.

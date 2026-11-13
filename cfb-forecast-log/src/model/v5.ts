@@ -54,8 +54,8 @@ export const ModelV5ConfigSchema = z.object({
 });
 export type ModelV5Config = z.infer<typeof ModelV5ConfigSchema>;
 
-export function loadModelV5Config(): ModelV5Config {
-  return ModelV5ConfigSchema.parse(JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, MODEL_V5_FILE), 'utf8')));
+export function loadModelV5Config(file = MODEL_V5_FILE): ModelV5Config {
+  return ModelV5ConfigSchema.parse(JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, file), 'utf8')));
 }
 
 export function assertV5Fitted(cfg: ModelV5Config): void {

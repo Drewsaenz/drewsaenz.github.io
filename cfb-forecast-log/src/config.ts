@@ -40,11 +40,11 @@ export const ScoringConfigSchema = z.object({
   news_gap_min: z.number().min(0).max(1).default(0.1),
   /**
    * Models the weekly report reads first and summarizes, in order (Drew, 2026-11-09: v5 main model,
-   * v3 market baseline, v1 raw ratings). Every other logged model is still scored, below a divider.
+   * v3 market baseline, v1 raw ratings; v5.1 replaced v5 as the main model on 2026-11-12). Every other logged model is still scored, below a divider.
    */
   focus_models: z.array(z.string()).optional(),
 });
-export const DEFAULT_FOCUS_MODELS = ['v5-fused', 'v3-anchor', 'v1-blend'];
+export const DEFAULT_FOCUS_MODELS = ['v5.1-fused', 'v3-anchor', 'v1-blend'];
 export type ScoringConfig = z.infer<typeof ScoringConfigSchema>;
 
 export const KalshiConfigSchema = z.object({
