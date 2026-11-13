@@ -322,9 +322,19 @@ export interface CoachEvent {
 const CHANGE_OUT = /\b(fired|dismiss|let go|part(ed|s)? ways|resign|reliev|step(ped|s)? down|depart|demot|no longer|out as|ousted|terminat)/i;
 const CHANGE_IN = /\b(interim|promot|named|hired|take over|takes over|taking over|new (head coach|oc|dc|offensive coordinator|defensive coordinator|play-?caller)|play-?call)/i;
 
+// The head coach is the one changing: "interim head coach", "named head coach", "fired head coach X", "head coach X was fired".
+const HEAD_CHANGE = /\b(interim head coach|(named|hired|hires|as|new) (the |its |their )?head coach|(fired|fires|dismissed|let go|parted ways with|relieved|ousted|terminated) (its |their |the )?head coach|head coach \S+( \S+)? (was|has been|is|got) (fired|dismissed|let go|relieved|ousted|terminated))/i;
+const COORD = /coordinator|\bOC\b|\bDC\b|play-?call/i;
+
+/**
+ * Which coach a change fact is about. A sentence that names the head coach as
+ * the one making the move ("Head coach Dan Lanning fired offensive coordinator
+ * Drew Mehringer") is a coordinator change, not a head-coach change.
+ */
 export function coachRole(detail: string): CoachEvent['role'] {
+  if (HEAD_CHANGE.test(detail)) return 'head';
+  if (COORD.test(detail)) return 'coordinator';
   if (/head coach/i.test(detail)) return 'head';
-  if (/coordinator|\bOC\b|\bDC\b|play-?call/i.test(detail)) return 'coordinator';
   return 'other';
 }
 
