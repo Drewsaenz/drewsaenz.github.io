@@ -4,7 +4,7 @@
  * `ratings` for (season, current week) in one transaction.
  */
 import { loadAliases, loadCfbdConfig } from '../config';
-import { openDb, upsertGames, upsertRatings, type RatingRow } from '../db';
+import { loadRatings, openDb, unchangedSources, upsertGames, upsertRatings, type RatingRow } from '../db';
 import { requireEnv } from '../env';
 import { log, runJob } from '../log';
 import { FeiClient } from '../sources/fei';
@@ -27,16 +27,17 @@ runJob('ratings', async () => {
     rows.push({ season, week, source, team, rating, extra: extra ? JSON.stringify(extra) : null, fetched_at });
 
   // --- CFBD ratings -------------------------------------------------------
-  const sp = await cfbd.sp(season);
+  // Fresh fetches: a cached copy from earlier in the week may predate the weekend's games.
+  const sp = await cfbd.sp(season, false, true);
   for (const [team, r] of sp) add('sp', team, r);
 
   // Elo "as of" the end of the previous week is what is known on Tuesday.
   // Week 1 has no prior week; omit the week param to get the latest (preseason) Elo.
-  const elo = await cfbd.elo(season, week > 1 ? week - 1 : undefined);
+  const elo = await cfbd.elo(season, week > 1 ? week - 1 : undefined, false, true);
   for (const [team, r] of elo) add('elo', team, r);
 
   if (cfbdCfg.use_fpi) {
-    const fpi = await cfbd.fpi(season);
+    const fpi = await cfbd.fpi(season, false, true);
     for (const [team, r] of fpi) add('fpi', team, r);
   }
 
@@ -58,6 +59,11 @@ runJob('ratings', async () => {
   }
 
   const db = openDb();
+  // A source that did not move since last week has probably not been updated upstream yet.
+  // The forecasts still run (three fresh sources beat none), but the log and tracker say so.
+  for (const source of unchangedSources(loadRatings(db, season, week - 1), rows)) {
+    log.warn(`${source}: every rating is identical to week ${week - 1}; the source has not updated. Re-run \`npm run ratings\` later today.`);
+  }
   db.transaction(() => {
     upsertGames(db, games);
     upsertRatings(db, rows);

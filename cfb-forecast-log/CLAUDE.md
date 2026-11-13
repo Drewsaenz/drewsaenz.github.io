@@ -269,6 +269,17 @@ report -> pregame Kalshi moves against v4 shows whether Kalshi lags official new
 | `resolve`  | Sun 06:00 and Mon 06:00          | Pull completed games; fill `outcome` + `resolved_at` on all pending rows. Rows that can't be graded fairly (game cancelled, moved to another week, dropped by CFBD, or a pregame row whose kickoff later moved) go to `forecast_voids` instead (rules in `src/grading.ts`) |
 | `report`   | Mon 06:30                        | Score everything resolved; write `reports/YYYY-WW.md` |
 
+Reliability notes (2026-11-12):
+- The week pointer (`currentWeek`) and the pregame "anything soon?" check look at
+  games with an FBS team only. The CFBD feed carries every division.
+- `ratings` fetches SP+, Elo and FPI fresh, never from the cache, and warns when a
+  source is identical to the week before (week 10 ran on week 9's SP+). The
+  tracker shows the same warning.
+- A Kalshi market dated after the last scheduled game (bowls, playoff) is skipped
+  with a warning. Any other unmapped market still fails the snapshot.
+- The tracker warns when `news:extract` or `news:availability` fails three times
+  in a row, and when any other job's latest run failed.
+
 Every job is idempotent: re-running it in the same window must not create
 duplicate rows (enforce with a UNIQUE index on
 `(game_id, ticker, snapshot_kind, model_version)` for non-manual kinds).
@@ -304,6 +315,12 @@ non-manual rows:
      Flag that maker fills are not guaranteed.
    Report total P&L, ROI on amount risked, and count of qualifying rows.
 4. **Edge decay**: Brier for `tuesday` vs `pregame` rows on the same games.
+
+**One row per game (2026-11-12).** Kalshi lists a market for each team, and the
+two are mirror images. `onePerGame` keeps the alphabetically first ticker per
+(game, snapshot kind, model) before anything is scored, in the report and in the
+tracker's results view. Both markets are still logged. Before this, every N,
+calibration count and P&L figure counted each game twice.
 
 ## Report format (`reports/YYYY-WW.md`)
 

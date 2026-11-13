@@ -6,9 +6,9 @@
  * the tracker's card surfaces; every chart has a legend or title naming its
  * series and a table view.
  */
-import type { ScoringConfig } from './config';
+import { DEFAULT_FOCUS_MODELS, type ScoringConfig } from './config';
 import type { Db } from './db';
-import { calibration, compareAccuracy, groupBy, hypotheticalPnl, rowTrade, type AccuracyComparison, type CalibrationBin, type PnlReport, type ScoreRow } from './score';
+import { calibration, compareAccuracy, groupBy, hypotheticalPnl, onePerGame, rowTrade, type AccuracyComparison, type CalibrationBin, type PnlReport, type ScoreRow } from './score';
 
 export interface ResultRow extends ScoreRow {
   season: number;
@@ -40,9 +40,13 @@ export interface ResultsView {
 }
 
 export function collectResults(db: Db, cfg: ScoringConfig): ResultsView | null {
-  const top = db
-    .prepare(`SELECT model_version, COUNT(*) AS n FROM forecasts WHERE snapshot_kind = 'tuesday' AND outcome IS NOT NULL GROUP BY 1 ORDER BY n DESC LIMIT 1`)
-    .get() as { model_version: string; n: number } | undefined;
+  // The first focus model with graded Tuesday rows; a model added mid-season has none yet, so fall
+  // through the list, and to the model with the most graded rows when no focus model has any.
+  const graded = db
+    .prepare(`SELECT model_version, COUNT(*) AS n FROM forecasts WHERE snapshot_kind = 'tuesday' AND outcome IS NOT NULL GROUP BY 1 ORDER BY n DESC`)
+    .all() as { model_version: string; n: number }[];
+  const focus = cfg.focus_models ?? DEFAULT_FOCUS_MODELS;
+  const top = focus.map((m) => graded.find((g) => g.model_version === m)).find(Boolean) ?? graded[0];
   if (!top) return null;
   const rows = db
     .prepare(
@@ -53,7 +57,7 @@ export function collectResults(db: Db, cfg: ScoringConfig): ResultsView | null {
         ORDER BY g.kickoff_utc, f.ticker`,
     )
     .all(top.model_version) as ResultRow[];
-  return buildResults(top.model_version, rows, cfg);
+  return buildResults(top.model_version, onePerGame(rows), cfg);
 }
 
 export function buildResults(modelVersion: string, rows: ResultRow[], cfg: ScoringConfig): ResultsView {

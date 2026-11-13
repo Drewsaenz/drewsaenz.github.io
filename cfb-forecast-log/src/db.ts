@@ -70,6 +70,20 @@ export function loadRatings(db: Db, season: number, week: number): Map<string, M
   return out;
 }
 
+/** Sources whose new ratings equal the earlier set for every team both have (at least 50 teams compared). */
+export function unchangedSources(prev: Map<string, Map<string, number>>, rows: { source: string; team: string; rating: number }[]): string[] {
+  const seen = new Map<string, { n: number; same: number }>();
+  for (const r of rows) {
+    const before = prev.get(r.source)?.get(r.team);
+    if (before === undefined) continue;
+    const c = seen.get(r.source) ?? { n: 0, same: 0 };
+    c.n += 1;
+    if (before === r.rating) c.same += 1;
+    seen.set(r.source, c);
+  }
+  return [...seen].filter(([, c]) => c.n >= 50 && c.same === c.n).map(([s]) => s);
+}
+
 export function gamesForSeason(db: Db, season: number): GameRow[] {
   return db.prepare('SELECT * FROM games WHERE season = ? ORDER BY kickoff_utc').all(season) as GameRow[];
 }

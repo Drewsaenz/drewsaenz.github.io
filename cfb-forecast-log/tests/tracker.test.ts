@@ -83,3 +83,11 @@ test('empty database renders a waiting page', () => {
   assert.match(html, /Waiting for the first Tuesday run/);
   assert.match(html, /<meta http-equiv="refresh"/);
 });
+
+test('parseJobLog counts failures in a row and resets on success', () => {
+  const line = (t: string, ok: boolean) => `2026-11-03T${t}:00.000Z ${ok ? 'INFO  [news:extract] done in 1.0s' : 'ERROR [news:extract] FAILED, nothing written'}`;
+  const failing = parseJobLog([line('10:45', true), line('11:45', false), line('12:45', false), line('13:45', false)].join('\n'));
+  assert.equal(failing.find((r) => r.job === 'news:extract')!.failStreak, 3);
+  const recovered = parseJobLog([line('11:45', false), line('12:45', false), line('13:45', true)].join('\n'));
+  assert.equal(recovered.find((r) => r.job === 'news:extract')!.failStreak, 0);
+});

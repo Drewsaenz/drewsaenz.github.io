@@ -10,16 +10,32 @@ export function seasonFor(now: Date): number {
   return now.getUTCMonth() >= 5 ? y : y - 1;
 }
 
+/** Games with at least one FBS team. The CFBD feed carries every division; only FBS games have ratings and markets. */
+export function fbsGames(games: GameRow[]): GameRow[] {
+  const fbs = games.filter((g) => g.fbs !== false);
+  return fbs.length > 0 ? fbs : games;
+}
+
 /**
- * "Current week" = the earliest week that still has a game kicking off at or
- * after `now`. After the last game, returns the final week (jobs will then find
- * nothing upcoming and write nothing). Returns null when the schedule is empty.
+ * "Current week" = the week of the next FBS game to kick off at or after `now`.
+ * After the last game, returns the final week (jobs will then find nothing
+ * upcoming and write nothing). Returns null when the schedule is empty.
+ *
+ * Lower-division games are ignored: their week numbers and late kickoffs used
+ * to move the pointer before the FBS week was over. A game replayed long after
+ * its original week keeps its old week number, so an upcoming game more than
+ * one week behind the games already played is ignored too.
  */
 export function currentWeek(games: GameRow[], now: Date): number | null {
   if (games.length === 0) return null;
-  const upcoming = games.filter((g) => Date.parse(g.kickoff_utc) >= now.getTime());
-  if (upcoming.length > 0) return Math.min(...upcoming.map((g) => g.week));
-  return Math.max(...games.map((g) => g.week));
+  const pool = fbsGames(games);
+  const t = now.getTime();
+  const started = pool.filter((g) => Date.parse(g.kickoff_utc) < t);
+  const floor = started.length > 0 ? Math.max(...started.map((g) => g.week)) - 1 : -Infinity;
+  const upcoming = pool.filter((g) => Date.parse(g.kickoff_utc) >= t && g.week >= floor);
+  if (upcoming.length === 0) return Math.max(...pool.map((g) => g.week));
+  const next = Math.min(...upcoming.map((g) => Date.parse(g.kickoff_utc)));
+  return Math.min(...upcoming.filter((g) => Date.parse(g.kickoff_utc) === next).map((g) => g.week));
 }
 
 /** ISO-8601 week label used for report file names: YYYY-WW. */

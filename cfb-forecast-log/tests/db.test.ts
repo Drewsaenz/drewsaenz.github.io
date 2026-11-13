@@ -53,3 +53,15 @@ test('ratings upsert and load by week', () => {
   assert.equal(r.get('fei')!.get('Texas'), 1);
   assert.equal(loadRatings(db, 2025, 8).size, 0);
 });
+
+test('unchangedSources names a source whose ratings did not move', () => {
+  const { unchangedSources } = require('../src/db') as typeof import('../src/db');
+  const teams = Array.from({ length: 60 }, (_, i) => `T${i}`);
+  const prev = new Map([
+    ['sp', new Map(teams.map((t, i) => [t, i]))],
+    ['elo', new Map(teams.map((t, i) => [t, 1500 + i]))],
+  ]);
+  const rows = [...teams.map((t, i) => ({ source: 'sp', team: t, rating: i })), ...teams.map((t, i) => ({ source: 'elo', team: t, rating: 1501 + i }))];
+  assert.deepEqual(unchangedSources(prev, rows), ['sp']);
+  assert.deepEqual(unchangedSources(new Map(), rows), []);
+});

@@ -30,6 +30,8 @@ const CfbdGame = z.object({
   neutralSite: z.boolean().nullable().optional(),
   homeTeam: z.string(),
   awayTeam: z.string(),
+  homeClassification: z.string().nullable().optional(),
+  awayClassification: z.string().nullable().optional(),
   homePoints: z.number().nullable().optional(),
   awayPoints: z.number().nullable().optional(),
   completed: z.boolean().nullable().optional(),
@@ -159,6 +161,8 @@ export class CfbdClient {
       home_points: g.homePoints ?? null,
       away_points: g.awayPoints ?? null,
       completed: g.completed ? 1 : 0,
+      // Unknown classification (an older cached response) counts as FBS, so nothing is dropped by accident.
+      fbs: g.homeClassification == null && g.awayClassification == null ? true : g.homeClassification === 'fbs' || g.awayClassification === 'fbs',
     }));
   }
 
@@ -174,8 +178,12 @@ export class CfbdClient {
     });
   }
 
-  async sp(season: number, historical = false): Promise<TeamRatings> {
-    const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
+  /**
+   * `fresh` skips the cache. The weekly ratings job uses it: the tracker reads the
+   * same SP+ endpoint all week, so a cached copy can be a day old on Tuesday morning.
+   */
+  async sp(season: number, historical = false, fresh = false): Promise<TeamRatings> {
+    const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const raw = await this.get('/ratings/sp', { year: season }, CfbdSp, ttl);
     return toMap(raw.filter((r) => r.team !== 'nationalAverages').map((r) => [r.team, r.rating]));
   }
@@ -196,8 +204,8 @@ export class CfbdClient {
     return { teams, avg };
   }
 
-  async fpi(season: number, historical = false): Promise<TeamRatings> {
-    const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
+  async fpi(season: number, historical = false, fresh = false): Promise<TeamRatings> {
+    const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const raw = await this.get('/ratings/fpi', { year: season }, CfbdFpi, ttl);
     return toMap(raw.map((r) => [r.team, r.fpi]));
   }
@@ -233,8 +241,8 @@ export class CfbdClient {
   }
 
   /** Elo as of the end of `week` (omit week for the latest available). */
-  async elo(season: number, week?: number, historical = false): Promise<TeamRatings> {
-    const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
+  async elo(season: number, week?: number, historical = false, fresh = false): Promise<TeamRatings> {
+    const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const params: Record<string, string | number> = { year: season };
     if (week !== undefined) params.week = week;
     const raw = await this.get('/ratings/elo', params, CfbdElo, ttl);

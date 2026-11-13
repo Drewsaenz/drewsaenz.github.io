@@ -22,6 +22,7 @@ import { freshAdjustment } from '../model/v51';
 import { weeksMissed } from '../model/v4';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
+import { fbsGames } from '../season';
 import { seasonContext } from './context';
 import { saveStarters } from '../news';
 
@@ -82,7 +83,7 @@ runJob(`snapshot:${kind}`, async () => {
   // nothing to snapshot; after Saturday's last kickoff the season week rolls over to one
   // whose ratings are not pulled until Tuesday, so checking first avoids a false failure.
   if (kind === 'pregame') {
-    const soon = games.filter((g) => {
+    const soon = fbsGames(games).filter((g) => {
       const kick = Date.parse(g.kickoff_utc);
       return kick > now.getTime() && kick - now.getTime() <= PREGAME_WINDOW_MS;
     });
@@ -92,13 +93,16 @@ runJob(`snapshot:${kind}`, async () => {
     }
   }
   const ratings = loadRatings(db, season, week);
-  if (ratings.size === 0) throw new Error(`no ratings stored for season ${season} week ${week}; run \`npm run ratings\` first`);
+  const noRatings = () => new Error(`no ratings stored for season ${season} week ${week}; run \`npm run ratings\` first`);
+  // Pregame decides after the markets are matched: right after the week's last kickoff the pointer
+  // moves to a week with no ratings yet, and a run with nothing to snapshot is not a failure.
+  if (ratings.size === 0 && kind !== 'pregame') throw noRatings();
 
   const kalshi = new KalshiClient();
   await kalshi.confirmSeries();
   const markets = await kalshi.listMarkets('open');
   log.info(`Kalshi: ${markets.length} open markets in ${kalshi.cfg.series_ticker}`);
-  const mapped = mapMarketsToGames(markets, games, aliases.kalshi);
+  const mapped = mapMarketsToGames(markets, games, aliases.kalshi, (msg) => log.warn(msg));
 
   // Which games this snapshot kind covers. Never a game that has already kicked off.
   const selected = mapped.filter(({ game }) => {
@@ -109,6 +113,11 @@ runJob(`snapshot:${kind}`, async () => {
     return true;
   });
   log.info(`${selected.length} market(s) selected for kind=${kind}`);
+  if (ratings.size === 0) {
+    if (selected.length > 0) throw noRatings();
+    log.info('no ratings for this week yet and nothing to snapshot');
+    return;
+  }
 
   // Closing lines for every week that has a selected game (normally just one).
   const spreads = new Map<number, number | null>();

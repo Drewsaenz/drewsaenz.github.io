@@ -63,3 +63,15 @@ test('mapMarketsToGames reads dollar price fields when cent fields are absent', 
   assert.equal(mapped.yes_bid, 44);
   assert.equal(mapped.yes_ask, 47);
 });
+
+test('mapMarketsToGames skips a market dated after the last scheduled game, with a warning', () => {
+  const games = [game({ game_id: 1, home_team: 'Oklahoma', away_team: 'Texas', kickoff_utc: '2025-10-25T19:30:00Z' })];
+  const bowl = { ...fixture.markets[0], ticker: 'KXNCAAFGAME-25DEC27TEXOU-TEX' } as KalshiMarket;
+  const warnings: string[] = [];
+  const mapped = mapMarketsToGames([fixture.markets[0], bowl], games, {}, (w) => warnings.push(w));
+  assert.equal(mapped.length, 1);
+  assert.match(warnings[0], /skipped 1 market.*25DEC27/);
+  // A market inside the schedule's range that matches nothing still fails loud.
+  const early = { ...fixture.markets[0], ticker: 'KXNCAAFGAME-25OCT11TEXOU-TEX' } as KalshiMarket;
+  assert.throws(() => mapMarketsToGames([early], games, {}), /matched 0/);
+});

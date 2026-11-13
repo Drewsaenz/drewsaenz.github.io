@@ -12,7 +12,7 @@ import { log, runJob } from '../log';
 import { REPORTS_DIR } from '../paths';
 import { isoWeekLabel } from '../season';
 import { qbFlags } from '../news';
-import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, newsCheck, type ScoreRow } from '../score';
+import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, newsCheck, onePerGame, type ScoreRow } from '../score';
 
 /** Short role label for a focus model's heading. */
 function focusRole(model: string): string {
@@ -22,9 +22,16 @@ function focusRole(model: string): string {
   return 'focus';
 }
 
-export function buildReport(rows: ScoreRow[], cfg = loadScoringConfig(), now = new Date(), flags: Map<number, string[]> = new Map()): string {
+export function buildReport(allRows: ScoreRow[], cfg = loadScoringConfig(), now = new Date(), flags: Map<number, string[]> = new Map()): string {
+  // Each game has a market per team; score one of the pair so no game counts twice.
+  const rows = onePerGame(allRows);
   const out: string[] = [];
-  out.push(`# cfb-forecast-log report ${isoWeekLabel(now)}`, '', `Generated ${now.toISOString()}. Resolved non-manual rows: ${rows.length}.`, '');
+  out.push(
+    `# cfb-forecast-log report ${isoWeekLabel(now)}`,
+    '',
+    `Generated ${now.toISOString()}. Resolved non-manual rows: ${rows.length}, one per game for each snapshot and model (${allRows.length} market rows on file).`,
+    '',
+  );
   if (rows.length === 0) {
     out.push('_No resolved forecasts yet._', '');
     return out.join('\n');

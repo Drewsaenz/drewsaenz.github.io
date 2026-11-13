@@ -101,3 +101,21 @@ test('newsCheck splits rows by QB flags and Vegas gap, and scores the clean set'
   assert.equal(nc.cleanPnl.maker.n, 1);
   assert.ok(nc.cleanPnl.maker.pnl > 0);
 });
+
+test('onePerGame keeps one market of each pair per snapshot and model', () => {
+  const rows = [
+    row({ game_id: 1, ticker: 'G1-TEX', my_prob: 0.6, outcome: 1 }),
+    row({ game_id: 1, ticker: 'G1-OU', my_prob: 0.4, outcome: 0 }),
+    row({ game_id: 1, ticker: 'G1-TEX', my_prob: 0.62, outcome: 1, snapshot_kind: 'pregame' }),
+    row({ game_id: 1, ticker: 'G1-OU', my_prob: 0.41, outcome: 0, model_version: 'v3-anchor' }),
+    row({ game_id: 2, ticker: 'G2-LSU', my_prob: 0.7, outcome: 1 }),
+  ];
+  const { onePerGame } = require('../src/score') as typeof import('../src/score');
+  const kept = onePerGame(rows);
+  assert.deepEqual(kept.map((r) => `${r.game_id}:${r.ticker}:${r.snapshot_kind}:${r.model_version}`), [
+    '1:G1-OU:tuesday:v1-blend',
+    '1:G1-TEX:pregame:v1-blend',
+    '1:G1-OU:tuesday:v3-anchor',
+    '2:G2-LSU:tuesday:v1-blend',
+  ]);
+});

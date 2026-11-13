@@ -71,3 +71,17 @@ test('buildReport leads with the focus models and summarizes only them', () => {
   assert.match(only.split('## Summary')[1], /v2-qb:/);
   assert.ok(!only.includes('Also logged'));
 });
+
+test('currentWeek ignores lower-division games and long-postponed replays', () => {
+  const games = [
+    game({ game_id: 1, week: 10, kickoff_utc: '2026-11-07T19:00:00Z' }),
+    game({ game_id: 2, week: 10, kickoff_utc: '2026-11-08T04:30:00Z' }), // late Saturday FBS kickoff
+    game({ game_id: 3, week: 11, kickoff_utc: '2026-11-08T04:00:00Z', fbs: false }), // lower division, numbered a week ahead
+    game({ game_id: 4, week: 3, kickoff_utc: '2026-11-10T00:00:00Z', fbs: false }),
+    game({ game_id: 5, week: 11, kickoff_utc: '2026-11-11T00:00:00Z' }),
+    game({ game_id: 6, week: 3, kickoff_utc: '2026-12-05T19:00:00Z' }), // replay of a postponed week 3 game
+  ];
+  assert.equal(currentWeek(games, new Date('2026-11-08T03:30:00Z')), 10);
+  assert.equal(currentWeek(games, new Date('2026-11-08T05:00:00Z')), 11);
+  assert.equal(currentWeek(games, new Date('2026-11-12T00:00:00Z')), 11); // not dragged back to week 3
+});

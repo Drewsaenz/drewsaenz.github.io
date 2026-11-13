@@ -249,6 +249,22 @@ export function newsCheck(rows: ScoreRow[], qbFlags: Map<number, string[]>, cfg:
   };
 }
 
+/**
+ * One row per (game, snapshot kind, model). Kalshi lists a market for each
+ * team, and the two are mirror images: the same forecast, the same bet. Scoring
+ * both counts every game twice and doubles hypothetical P&L. Keeps the market
+ * with the alphabetically first ticker, so the choice never depends on the result.
+ */
+export function onePerGame<T extends ScoreRow>(rows: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const r of rows) {
+    const k = `${r.game_id}|${r.snapshot_kind}|${r.model_version}`;
+    const cur = best.get(k);
+    if (!cur || (r.ticker ?? '') < (cur.ticker ?? '')) best.set(k, r);
+  }
+  return rows.filter((r) => best.get(`${r.game_id}|${r.snapshot_kind}|${r.model_version}`) === r);
+}
+
 export function groupBy<T>(rows: T[], keyFn: (r: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>();
   for (const r of rows) {

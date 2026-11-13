@@ -138,11 +138,17 @@ export interface MappedMarket {
 /**
  * Map Kalshi markets to CFBD games by (yes team, kickoff date). Throws on any
  * market that cannot be mapped to exactly one game — never guess.
+ *
+ * One exception: a market dated after the last game on the schedule (a bowl or
+ * playoff game; the schedule is regular season only) is out of scope. It is
+ * skipped with a warning so it cannot stop the regular-season markets.
  */
-export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], aliases: Record<string, string>): MappedMarket[] {
+export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], aliases: Record<string, string>, warn: (msg: string) => void = () => {}): MappedMarket[] {
   const out: MappedMarket[] = [];
   const problems: string[] = [];
+  const beyond: string[] = [];
   const WINDOW_MS = 36 * 3_600_000;
+  const lastKickoff = games.length > 0 ? Math.max(...games.map((g) => Date.parse(g.kickoff_utc))) : -Infinity;
 
   for (const m of markets) {
     const rawTeam = (m.yes_sub_title ?? '').trim();
@@ -159,6 +165,10 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
     const candidates = games.filter(
       (g) => (g.home_team === team || g.away_team === team) && Math.abs(Date.parse(g.kickoff_utc) - anchor.getTime()) <= WINDOW_MS,
     );
+    if (candidates.length === 0 && anchor.getTime() - lastKickoff > WINDOW_MS) {
+      beyond.push(m.ticker);
+      continue;
+    }
     if (candidates.length !== 1) {
       let hint = '';
       if (candidates.length === 0) {
@@ -185,6 +195,9 @@ export function mapMarketsToGames(markets: KalshiMarket[], games: GameRow[], ali
       open_interest: numberOrNull(m.open_interest, m.open_interest_fp),
       close_utc: m.close_time ? new Date(m.close_time).toISOString() : null,
     });
+  }
+  if (beyond.length > 0) {
+    warn(`Kalshi: skipped ${beyond.length} market(s) dated after the last scheduled game (postseason is out of scope): ${beyond.slice(0, 6).join(', ')}${beyond.length > 6 ? ', ...' : ''}`);
   }
   if (problems.length > 0) {
     throw new Error(`Kalshi: ${problems.length} unmapped market(s):\n  ${problems.join('\n  ')}`);

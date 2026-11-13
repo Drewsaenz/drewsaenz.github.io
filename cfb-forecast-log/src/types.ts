@@ -15,6 +15,8 @@ export interface GameRow {
   home_points: number | null;
   away_points: number | null;
   completed: 0 | 1;
+  /** False when CFBD says neither side is an FBS team. Set by the live schedule fetch only; never stored. */
+  fbs?: boolean;
 }
 
 export interface MarketRow {

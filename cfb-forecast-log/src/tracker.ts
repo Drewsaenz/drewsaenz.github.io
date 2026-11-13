@@ -28,6 +28,8 @@ export interface JobRun {
   job: string;
   lastDone: string | null;
   lastFailed: string | null;
+  /** Failures in a row up to the latest run; 0 when the latest run succeeded. */
+  failStreak: number;
 }
 
 export interface TrackerState {
@@ -41,7 +43,10 @@ export interface TrackerState {
   jobs: JobRun[];
 }
 
-const JOBS = ['ratings', 'snapshot:tuesday', 'snapshot:pregame', 'resolve', 'report'];
+const JOBS = ['ratings', 'snapshot:tuesday', 'snapshot:report', 'snapshot:pregame', 'resolve', 'report', 'news:extract', 'news:availability'];
+/** Jobs that run many times a day: one bad run is noise, a run of them is an outage (a dead API key, a changed page). */
+const FREQUENT_JOBS = new Set(['news:extract', 'news:availability']);
+const FREQUENT_FAIL_STREAK = 3;
 
 export function chicago(iso: string, opts: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: TZ, ...opts }).format(new Date(iso));
@@ -50,15 +55,20 @@ const shortTime = (iso: string) => chicago(iso, { weekday: 'short', hour: 'numer
 
 /** Last success and last failure per job, from data/jobs.log lines written by runJob(). */
 export function parseJobLog(text: string): JobRun[] {
-  const runs = new Map<string, JobRun>(JOBS.map((j) => [j, { job: j, lastDone: null, lastFailed: null }]));
+  const runs = new Map<string, JobRun>(JOBS.map((j) => [j, { job: j, lastDone: null, lastFailed: null, failStreak: 0 }]));
   const re = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) (INFO|ERROR) +\[([^\]]+)\] (done|FAILED)/;
   for (const line of text.split('\n')) {
     const m = line.match(re);
     if (!m) continue;
     const run = runs.get(m[3]);
     if (!run) continue;
-    if (m[4] === 'done') run.lastDone = m[1];
-    else run.lastFailed = m[1];
+    if (m[4] === 'done') {
+      run.lastDone = m[1];
+      run.failStreak = 0;
+    } else {
+      run.lastFailed = m[1];
+      run.failStreak += 1;
+    }
   }
   return [...runs.values()];
 }
@@ -91,9 +101,24 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
   const warnings: string[] = [];
 
   for (const j of jobs) {
-    if (j.lastFailed && (!j.lastDone || j.lastFailed > j.lastDone)) {
+    if (!j.lastFailed || (j.lastDone && j.lastFailed <= j.lastDone)) continue;
+    if (FREQUENT_JOBS.has(j.job)) {
+      if (j.failStreak >= FREQUENT_FAIL_STREAK) warnings.push(`The ${j.job} job has failed ${j.failStreak} times in a row, last at ${shortTime(j.lastFailed)}. Check data/jobs.log.`);
+    } else {
       warnings.push(`The ${j.job} job failed at ${shortTime(j.lastFailed)} and has not succeeded since. Check data/jobs.log.`);
     }
+  }
+
+  // A rating source that did not move since the week before was probably not updated upstream when the ratings job ran.
+  const lastRated = db.prepare('SELECT season, week FROM ratings ORDER BY season DESC, week DESC LIMIT 1').get() as { season: number; week: number } | undefined;
+  if (lastRated) {
+    const stale = db
+      .prepare(
+        `SELECT a.source FROM ratings a JOIN ratings b ON b.season = a.season AND b.week = a.week - 1 AND b.source = a.source AND b.team = a.team
+          WHERE a.season = ? AND a.week = ? GROUP BY a.source HAVING COUNT(*) >= 50 AND SUM(a.rating <> b.rating) = 0`,
+      )
+      .all(lastRated.season, lastRated.week) as { source: string }[];
+    for (const s of stale) warnings.push(`Week ${lastRated.week} ${s.source.toUpperCase()} ratings are identical to week ${lastRated.week - 1}. The source had not updated when ratings were pulled; re-run npm run ratings.`);
   }
 
   const weeksScored = (
