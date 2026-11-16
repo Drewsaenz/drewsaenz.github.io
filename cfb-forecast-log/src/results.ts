@@ -40,13 +40,19 @@ export interface ResultsView {
 }
 
 export function collectResults(db: Db, cfg: ScoringConfig): ResultsView | null {
-  // The first focus model with graded Tuesday rows; a model added mid-season has none yet, so fall
-  // through the list, and to the model with the most graded rows when no focus model has any.
+  // The first focus model with at least two graded weeks of Tuesday rows. A model added mid-season
+  // has one week or none, which makes the by-week chart a single dot, so until it has two the page
+  // shows the focus model with the most graded weeks (then the most-graded model of any kind).
   const graded = db
-    .prepare(`SELECT model_version, COUNT(*) AS n FROM forecasts WHERE snapshot_kind = 'tuesday' AND outcome IS NOT NULL GROUP BY 1 ORDER BY n DESC`)
-    .all() as { model_version: string; n: number }[];
+    .prepare(
+      `SELECT f.model_version, COUNT(*) AS n, COUNT(DISTINCT g.season || '-' || g.week) AS weeks
+         FROM forecasts f JOIN games g ON g.game_id = f.game_id
+        WHERE f.snapshot_kind = 'tuesday' AND f.outcome IS NOT NULL GROUP BY 1 ORDER BY weeks DESC, n DESC`,
+    )
+    .all() as { model_version: string; n: number; weeks: number }[];
   const focus = cfg.focus_models ?? DEFAULT_FOCUS_MODELS;
-  const top = focus.map((m) => graded.find((g) => g.model_version === m)).find(Boolean) ?? graded[0];
+  const inFocus = focus.map((m) => graded.find((g) => g.model_version === m)).filter((g) => g !== undefined);
+  const top = inFocus.find((g) => g.weeks >= 2) ?? [...inFocus].sort((a, b) => b.weeks - a.weeks)[0] ?? graded[0];
   if (!top) return null;
   const rows = db
     .prepare(
@@ -228,10 +234,13 @@ export function renderResults(r: ResultsView): string {
     { name: 'Kalshi', color: '--s2' },
     { name: 'Vegas', color: '--s3' },
   ];
+  // Lines that sit within a few thousandths of each other need a fourth decimal on the axis.
+  const briers = r.weeks.flatMap((w) => [w.acc.mine.brier, w.acc.market.brier, w.acc.vegas.brier]).filter((x): x is number => x !== null);
+  const brierDigits = briers.length > 0 && Math.max(...briers) - Math.min(...briers) < 0.004 ? 4 : 3;
   const weekChart = lineChart({
     label: 'Brier score by week, lower is better',
     xLabels: r.weeks.map((w) => w.label),
-    yFmt: (v) => v.toFixed(3),
+    yFmt: (v) => v.toFixed(brierDigits),
     dots: 'all',
     series: [
       { ...S3[0], values: r.weeks.map((w) => w.acc.mine.brier), tips: r.weeks.map((w) => `Model ${f3(w.acc.mine.brier)}`) },
