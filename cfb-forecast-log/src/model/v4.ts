@@ -29,7 +29,7 @@ import { z } from 'zod';
 import type { Db } from '../db';
 import { CONFIG_DIR } from '../paths';
 import { clamp, sigmoid } from '../util/math';
-import { nameTokens, sameName, type Starter } from './v2';
+import { nameTokens, resolveLoneSurnames, sameName, sameNameStrict, type NameMatch, type Starter } from './v2';
 import { logit } from './v3';
 
 export const ModelV4ConfigSchema = z.object({
@@ -70,8 +70,19 @@ export const ModelV4ConfigSchema = z.object({
     .object({
       official_model: z.string().min(1),
       min_unofficial_sources: z.number().int().min(1),
+      /**
+       * v4.2+: a fact with no channel counts as its own outlet, keyed by the
+       * site it came from. Absent (v4.1): every such fact shares one voice.
+       */
+      unnamed_outlet: z.literal('by_site').optional(),
     })
     .optional(),
+  /**
+   * v4.2+: 'strict' compares player names with sameNameStrict (teammates who
+   * share a last name and an initial stay apart; a bare last name joins a full
+   * name only when one player on file has it). Absent = sameName, as v4 to v5.1.
+   */
+  name_match: z.literal('strict').optional(),
   clamp: z.tuple([z.number(), z.number()]),
   _note: z.string().optional(),
 });
@@ -103,6 +114,11 @@ export interface Importance {
 export type ImportanceIndex = Map<string, Importance[]>;
 
 const key = (name: string) => nameTokens(name).join(' ');
+
+/** The name comparison this config's version uses. */
+export function nameMatcher(cfg: Pick<ModelV4Config, 'name_match'>): NameMatch {
+  return cfg.name_match === 'strict' ? sameNameStrict : sameName;
+}
 
 /** Season stat rows (rushing, receiving, defensive) -> each player's share of his team's production. */
 export function buildImportance(rush: StatRow[], rec: StatRow[], def: StatRow[]): ImportanceIndex {
@@ -139,14 +155,25 @@ export function buildImportance(rush: StatRow[], rec: StatRow[], def: StatRow[])
   return out;
 }
 
-export function lookupImportance(index: ImportanceIndex, team: string, player: string): Importance | null {
+/**
+ * A player's production shares. `match` defaults to sameName (v4 to v5.1): the
+ * exact name, else the single loose hit. With sameNameStrict (v4.2+): the exact
+ * name, else the single strict hit, else, because the stats feed and the roster
+ * disagree on first names (Trey / Trevion Cooley), the single teammate with the
+ * same last name and initial who also plays in the same position group.
+ */
+export function lookupImportance(index: ImportanceIndex, team: string, player: string, match: NameMatch = sameName, position: string | null = null): Importance | null {
   const list = index.get(team);
   if (!list) return null;
   const k = key(player);
   const exact = list.find((p) => key(p.name) === k);
   if (exact) return exact;
-  const loose = list.filter((p) => sameName(player, p.name));
-  return loose.length === 1 ? loose[0] : null;
+  const hits = list.filter((p) => match(player, p.name, true)); // a bare last name is fine here: only a single hit counts
+  if (match !== sameNameStrict || hits.length > 0) return hits.length === 1 ? hits[0] : null;
+  const group = positionGroup(position);
+  if (group === 'OTHER' || nameTokens(player).length < 2) return null;
+  const nick = list.filter((p) => sameName(player, p.name) && positionGroup(p.position) === group);
+  return nick.length === 1 ? nick[0] : null;
 }
 
 export type Group = 'QB' | 'RB' | 'REC' | 'OL' | 'DEF' | 'OTHER';
@@ -166,13 +193,13 @@ export function positionGroup(pos: string | null | undefined): Group {
  * Consecutive recent weeks (newest first) in which the team threw passes but
  * the starter had no attempts. `weeks` is newest-first passing ATT rows per week.
  */
-export function weeksMissed(weeks: StatRow[][], team: string, starter: string): number {
+export function weeksMissed(weeks: StatRow[][], team: string, starter: string, match: NameMatch = sameName): number {
   let missed = 0;
   for (const rows of weeks) {
     const mine = rows.filter((r) => r.team === team && r.statType === 'ATT');
     const teamAtt = mine.reduce((n, r) => n + r.stat, 0);
     if (teamAtt === 0) continue; // bye or no data
-    const his = mine.filter((r) => key(r.player) === key(starter) || sameName(r.player, starter)).reduce((n, r) => n + r.stat, 0);
+    const his = mine.filter((r) => key(r.player) === key(starter) || match(r.player, starter)).reduce((n, r) => n + r.stat, 0);
     if (his > 0) break;
     missed += 1;
   }
@@ -192,6 +219,7 @@ export interface PlayerStatus {
 }
 
 interface FactRow {
+  source_url?: string | null;
   player: string;
   position: string | null;
   status: string;
@@ -235,10 +263,26 @@ export function latestStatuses(db: Db, cfg: ModelV4Config, team: string, atIso: 
   });
 }
 
-const groupByPlayer = <T extends { player: string }>(rows: T[]): T[][] => {
+/** Rewrite bare last names in `rows` to the one full name (in rows or `also`) that carries them. */
+function fullNames(rows: FactRow[], also: FactRow[] = []): void {
+  const map = resolveLoneSurnames([...rows, ...also].map((r) => r.player));
+  for (const r of rows) r.player = map.get(r.player) ?? r.player;
+}
+
+/** The outlet behind a fact that names no channel: its site, else the URL itself. */
+function siteOf(url: string | null | undefined): string {
+  if (!url) return '?';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+const groupByPlayer = <T extends { player: string }>(rows: T[], match: NameMatch = sameName): T[][] => {
   const groups: T[][] = [];
   for (const r of rows) {
-    const g = groups.find((x) => x[0].player === r.player || sameName(x[0].player, r.player));
+    const g = groups.find((x) => x[0].player === r.player || match(x[0].player, r.player));
     if (g) g.push(r);
     else groups.push([r]);
   }
@@ -255,23 +299,28 @@ const groupByPlayer = <T extends { player: string }>(rows: T[]): T[][] => {
  *      `min_unofficial_sources` different outlets mention: the status used is
  *      the one that many outlets support (each outlet's latest word counts once).
  *      A corroborated post-report status overrides the report for that player.
+ * v4.2 (name_match 'strict', sources.unnamed_outlet 'by_site'): names are
+ * compared with sameNameStrict after bare last names are resolved against the
+ * full names in this team's facts, and a fact with no channel is its own outlet.
  */
 export function layeredStatuses(db: Db, cfg: ModelV4Config, src: NonNullable<ModelV4Config['sources']>, team: string, atIso: string): PlayerStatus[] {
   const since = new Date(Date.parse(atIso) - cfg.lookback_days * 86_400_000).toISOString();
   const seasonStart = `${new Date(atIso).getUTCFullYear()}-07-01T00:00:00.000Z`;
   const prev = (db.prepare(`SELECT MAX(kickoff_utc) AS k FROM games WHERE (home_team = ? OR away_team = ?) AND kickoff_utc < ?`).get(team, team, atIso) as { k: string | null }).k;
   const w = (s: string) => cfg.status_weights[s] ?? 0;
-  const cols = `player, position, status, scope, as_of, detail, confidence, source_channel`;
+  const cols = `player, position, status, scope, as_of, detail, confidence, source_channel, source_url`;
+  const match = nameMatcher(cfg);
   const base = `team = ? AND player IS NOT NULL AND COALESCE(position, '') <> 'coach' AND status <> 'unknown' AND COALESCE(game_ref, '') <> 'previous' AND as_of <= ?`;
 
   // 1. Official report.
   const official = db
     .prepare(`SELECT ${cols} FROM news_facts WHERE ${base} AND model = ? AND as_of > ? ORDER BY as_of DESC`)
     .all(team, atIso, src.official_model, prev ?? since) as FactRow[];
+  if (cfg.name_match === 'strict') fullNames(official);
   const reportAt = official[0]?.as_of ?? null;
   const out = new Map<string, PlayerStatus>();
   for (const r of official.filter((x) => x.as_of === reportAt)) {
-    const prior = [...out.values()].find((x) => sameName(x.player, r.player));
+    const prior = [...out.values()].find((x) => match(x.player, r.player));
     if (prior && prior.weight >= w(r.status)) continue;
     if (prior) out.delete(prior.player);
     out.set(r.player, { player: r.player, position: r.position, status: r.status, weight: w(r.status), as_of: r.as_of, source: r.source_channel, detail: r.detail });
@@ -287,17 +336,18 @@ export function layeredStatuses(db: Db, cfg: ModelV4Config, src: NonNullable<Mod
         ORDER BY as_of DESC`,
     )
     .all(team, atIso, src.official_model, after, reportAt, seasonStart, cfg.min_confidence) as FactRow[];
-  for (const g of groupByPlayer(rows)) {
+  if (cfg.name_match === 'strict') fullNames(rows, official);
+  for (const g of groupByPlayer(rows, match)) {
     const perSource = new Map<string, FactRow>();
     for (const r of g) {
-      const k = r.source_channel ?? '?';
+      const k = r.source_channel ?? (src.unnamed_outlet === 'by_site' ? siteOf(r.source_url) : '?');
       if (!perSource.has(k)) perSource.set(k, r); // rows are newest first: keep each outlet's latest word
     }
     const voices = [...perSource.values()].sort((a, b) => w(b.status) - w(a.status));
     if (voices.length < src.min_unofficial_sources) continue;
     const pick = voices[src.min_unofficial_sources - 1]; // the strongest status that many outlets support
     const position = g.find((r) => r.position && r.position !== 'unknown')?.position ?? pick.position;
-    const prior = [...out.values()].find((x) => sameName(x.player, pick.player));
+    const prior = [...out.values()].find((x) => match(x.player, pick.player));
     if (prior) out.delete(prior.player);
     out.set(pick.player, {
       player: prior?.player ?? pick.player,
@@ -382,17 +432,19 @@ export function teamAdjustment(
   missed: number,
   coach: CoachEvent[],
 ): TeamAdjustment {
+  const match = nameMatcher(cfg);
   const items: LostItem[] = [];
   let qb = 0;
   let ol = 0;
   let other = 0;
   for (const s of statuses) {
     if (s.weight <= 0) continue;
-    const imp = lookupImportance(importance, team, s.player);
+    const imp = lookupImportance(importance, team, s.player, match, s.position);
     const group = positionGroup(imp?.position ?? s.position);
     let pts = 0;
     let note = '';
     if (group === 'QB') {
+      // sameName in every version: only a QB reaches this line, and the stats feed's first name can differ from the roster's.
       if (!starter || !(starter.player === s.player || sameName(s.player, starter.player))) continue; // backups don't count
       const fade = Math.max(cfg.qb.min_fade, 1 - cfg.qb.fade_per_missed_week * missed);
       pts = cfg.qb.points * s.weight * fade;

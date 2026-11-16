@@ -20,8 +20,8 @@
  * from the old-news term that this version removes.
  */
 import type { Db } from '../db';
-import { sameName } from './v2';
-import type { LostItem, ModelV4Config, TeamAdjustment } from './v4';
+import { resolveLoneSurnames, sameName, sameNameStrict, type NameMatch } from './v2';
+import { nameMatcher, type LostItem, type ModelV4Config, type TeamAdjustment } from './v4';
 
 export interface FreshOptions {
   /** How far before the previous kickoff an "out/doubtful" fact still describes that game. */
@@ -36,7 +36,7 @@ export function previousKickoff(db: Db, team: string, atIso: string): string | n
 }
 
 /** Was this player already listed out or doubtful for the game that kicked off at `prevKick`? */
-export function alreadyOut(db: Db, team: string, player: string, prevKick: string, opts: FreshOptions = DEFAULT_FRESH): boolean {
+export function alreadyOut(db: Db, team: string, player: string, prevKick: string, opts: FreshOptions = DEFAULT_FRESH, match: NameMatch = sameName): boolean {
   const from = new Date(Date.parse(prevKick) - opts.prev_window_days * 86_400_000).toISOString();
   const season = `${prevKick.slice(0, 4)}-07-01T00:00:00.000Z`;
   const rows = db
@@ -47,7 +47,10 @@ export function alreadyOut(db: Db, team: string, player: string, prevKick: strin
           AND (as_of >= ? OR (scope = 'season' AND as_of >= ?))`,
     )
     .all(team, prevKick, from, season) as { player: string }[];
-  return rows.some((r) => r.player === player || sameName(r.player, player));
+  // Strict matching (v5.2): a bare last name counts for the one full name on file that carries it.
+  const full = match === sameNameStrict ? resolveLoneSurnames([...rows.map((r) => r.player), player]) : new Map<string, string>();
+  const who = full.get(player) ?? player;
+  return rows.some((r) => r.player === player || match(full.get(r.player) ?? r.player, who));
 }
 
 /**
@@ -60,7 +63,7 @@ export function freshAdjustment(db: Db, cfg: ModelV4Config, adj: TeamAdjustment,
   const kept: LostItem[] = [];
   const dropped: LostItem[] = [];
   for (const i of adj.items) {
-    const stale = i.group === 'QB' ? qbMissed > 0 : alreadyOut(db, adj.team, i.player, prevKick, opts);
+    const stale = i.group === 'QB' ? qbMissed > 0 : alreadyOut(db, adj.team, i.player, prevKick, opts, nameMatcher(cfg));
     (stale ? dropped : kept).push(i);
   }
   const coach = adj.coach.filter((c) => Date.parse(c.as_of) > Date.parse(prevKick));

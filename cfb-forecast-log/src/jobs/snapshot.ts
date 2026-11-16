@@ -15,7 +15,7 @@ import { log, runJob } from '../log';
 import { assertFitted, homeIndicator, predictV1, vegasProb } from '../model/v1';
 import { adjustForQb, loadModelV2Config, starterStatus, startersFromAttempts } from '../model/v2';
 import { assertV3Fitted, loadModelV3Config, predictV3 } from '../model/v3';
-import { loadModelV4Config, predictV4, type TeamAdjustment } from '../model/v4';
+import { loadModelV4Config, nameMatcher, predictV4, type TeamAdjustment } from '../model/v4';
 import { adjustmentFor, describe, loadV4Inputs } from '../model/v4-inputs';
 import { loadModelV5Config, predictV5 } from '../model/v5';
 import { freshAdjustment } from '../model/v51';
@@ -65,6 +65,15 @@ runJob(`snapshot:${kind}`, async () => {
   const v51 = v51cfg.fitted_at && v51cfg.coefs ? v51cfg : null;
   if (!v51) log.warn(`config/model-v5.1.json has no coefficients; no ${v51cfg.model_version} rows this snapshot.`);
   else if (v51.injury_model_version !== v41.model_version) throw new Error(`model-v5.1.json expects injury model ${v51.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
+  // v5.2: v5.1 with stricter name matching in the injury layer (config/model-v4.2.json, not logged on its own).
+  const v42 = loadModelV4Config('model-v4.2.json');
+  if (v42.base_model_version !== model.model_version) {
+    throw new Error(`config/model-v4.2.json builds on ${v42.base_model_version} but model-v1.json is ${model.model_version}`);
+  }
+  const v52cfg = loadModelV5Config('model-v5.2.json');
+  const v52 = v52cfg.fitted_at && v52cfg.coefs ? v52cfg : null;
+  if (!v52) log.warn(`config/model-v5.2.json has no coefficients; no ${v52cfg.model_version} rows this snapshot.`);
+  else if (v52.injury_model_version !== v42.model_version) throw new Error(`model-v5.2.json expects injury model ${v52.injury_model_version} but model-v4.2.json is ${v42.model_version}`);
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -149,6 +158,15 @@ runJob(`snapshot:${kind}`, async () => {
     }
     return adj51.get(team)!;
   };
+  const adj52 = new Map<string, TeamAdjustment>();
+  const adjFor52 = (team: string, at: string) => {
+    if (!adj52.has(team)) {
+      const st = v4Starters.get(team);
+      const base = adjustmentFor(db, v42, v4Inputs!, v4Starters, team, at);
+      adj52.set(team, freshAdjustment(db, v42, base, at, st ? weeksMissed(v4Inputs!.weekly, team, st.player, nameMatcher(v42)) : 0));
+    }
+    return adj52.get(team)!;
+  };
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
@@ -207,10 +225,16 @@ runJob(`snapshot:${kind}`, async () => {
       p51 = predictV5(v51, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: adjFor51(opponent, snapshot_utc).points - adjFor51(m.yes_team, snapshot_utc).points, hoursToKickoff: hours });
       rows.push({ ...v1Row, model_version: v51.model_version, my_prob: p51 });
     }
+    let p52: number | null = null;
+    if (v52) {
+      const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
+      p52 = predictV5(v52, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: adjFor52(opponent, snapshot_utc).points - adjFor52(m.yes_team, snapshot_utc).points, hoursToKickoff: hours });
+      rows.push({ ...v1Row, model_version: v52.model_version, my_prob: p52 });
+    }
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${p51 === null ? '' : ` v5.1=${p51.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${p51 === null ? '' : ` v5.1=${p51.toFixed(3)}`}${p52 === null ? '' : ` v5.2=${p52.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }

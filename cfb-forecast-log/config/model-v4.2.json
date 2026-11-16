@@ -1,0 +1,46 @@
+{
+  "model_version": "v4.2-avail",
+  "base_model_version": "v1-blend",
+  "created_at": "2026-11-12",
+  "points_to_logit": 0.14105,
+  "status_weights": {
+    "out": 1,
+    "doubtful": 0.75,
+    "limited": 0.5,
+    "questionable": 0.35,
+    "probable": 0.1,
+    "available": 0,
+    "returning": 0
+  },
+  "lookback_days": 8,
+  "min_confidence": 0.5,
+  "qb": {
+    "points": 6,
+    "min_starter_share": 0.4,
+    "weeks_checked": 3,
+    "fade_per_missed_week": 0.25,
+    "min_fade": 0.25
+  },
+  "rb_points": 3,
+  "receiver_points": 4,
+  "defense_points": 8,
+  "ol_points_each": 0.6,
+  "ol_cap": 2,
+  "non_qb_cap": 6,
+  "coach": {
+    "window_days": 21,
+    "head_coach_change_points": 1,
+    "coordinator_change_points": 0
+  },
+  "sources": {
+    "official_model": "availability-report",
+    "min_unofficial_sources": 2,
+    "unnamed_outlet": "by_site"
+  },
+  "name_match": "strict",
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v4.2-avail = v4.1-avail with the same weights and source layering, and two matching fixes. (1) name_match 'strict': v4.1 treated two teammates as one player whenever they shared a last name and a first initial (Oregon QB Dante Moore and WR Dakorien Moore; Vanderbilt's Jared and Jamison Curtis; nine such pairs in the stored facts on 2026-11-12), and let a bare last name join every teammate who has it. Now first names must agree (equal, an initial, or a transcript misspelling within one or two letters) and a bare last name joins a full name only when one player in the team's facts carries it. (2) sources.unnamed_outlet 'by_site': a fact with no channel counts as its own outlet, keyed by its site, where v4.1 pooled all such facts into one voice (no stored fact lacks a channel today, so this changes nothing yet). Not logged as its own model: it is the injury layer of v5.2-fused. Approved by Drew 2026-11-12. Any change after v5.2 rows exist is a new model_version."
+}

@@ -7,6 +7,7 @@
  *   npm run news:restamp -- [--dir data/transcripts]
  *   npm run news:gameref -- [--dry-run] [--model id]   tag facts stored before game_ref existed (recap vs upcoming)
  *   npm run news:players -- [--dry-run]   resolve stored player names (and positions) to the roster
+ *   npx tsx scripts/news.ts teams [--dry-run]   after adding news aliases: give stored facts with no team their CFBD team
  *   npm run news:availability -- [--dir data/availability]   official reports saved by TranscriptGPT -> facts
  *
  * restamp: after the scraper backfills `published:` into transcripts that were
@@ -47,6 +48,50 @@ async function loadRoster(season: number): Promise<RosterIndex> {
   const rows = await new CfbdClient(requireEnv('CFBD_API_KEY')).roster(season);
   if (rows.length === 0) throw new Error(`CFBD returned an empty roster for ${season}`);
   return indexRoster(rows);
+}
+
+const PLAYER_ROW_SQL = `SELECT id, source_url, team_raw, team, player, player_raw, position, status FROM news_facts`;
+interface PlayerRow {
+  id: number;
+  source_url: string;
+  team_raw: string;
+  team: string;
+  player: string;
+  player_raw: string | null;
+  position: string | null;
+  status: string;
+}
+
+/**
+ * Resolve stored player names (and positions) against the roster. Where the new
+ * name collides with a fact already stored from the same source, the duplicate
+ * row is deleted. Call inside a transaction.
+ */
+function resolveStoredPlayers(db: ReturnType<typeof openDb>, roster: RosterIndex, rows: PlayerRow[], dryRun: boolean) {
+  const clash = db.prepare(`SELECT id FROM news_facts WHERE source_url = ? AND team_raw = ? AND player = ? AND status = ? AND id <> ?`);
+  const rename = db.prepare(`UPDATE news_facts SET player = ?, player_raw = COALESCE(player_raw, ?), position = ? WHERE id = ?`);
+  const drop = db.prepare(`DELETE FROM news_facts WHERE id = ?`);
+  const changes = new Map<string, number>();
+  let renamed = 0;
+  let merged = 0;
+  for (const r of rows) {
+    const match = rosterMatch(roster, r.team, r.player, r.position);
+    if (!match) continue;
+    const name = fullName(match);
+    const pos = factPositionOf(match.position) ?? r.position;
+    if (name === r.player && pos === r.position) continue;
+    const key = `${r.team}: ${r.player}${r.position && pos !== r.position ? ` [${r.position}]` : ''} -> ${name}${pos !== r.position ? ` [${pos}]` : ''}`;
+    changes.set(key, (changes.get(key) ?? 0) + 1);
+    if (dryRun) continue;
+    if (clash.get(r.source_url, r.team_raw, name, r.status, r.id)) {
+      drop.run(r.id);
+      merged += 1;
+    } else {
+      rename.run(name, r.player, pos, r.id);
+      renamed += 1;
+    }
+  }
+  return { changes, renamed, merged };
 }
 
 function arg(name: string, fallback?: string): string | undefined {
@@ -336,38 +381,60 @@ if (cmd === 'extract') {
     const dryRun = flag('dry-run');
     const db = openDb();
     const roster = await loadRoster(seasonFor(new Date()));
-    const rows = db
-      .prepare(`SELECT id, source_url, team_raw, team, player, player_raw, position, status FROM news_facts WHERE player IS NOT NULL AND team IS NOT NULL ORDER BY id`)
-      .all() as { id: number; source_url: string; team_raw: string; team: string; player: string; player_raw: string | null; position: string | null; status: string }[];
-    const clash = db.prepare(`SELECT id FROM news_facts WHERE source_url = ? AND team_raw = ? AND player = ? AND status = ? AND id <> ?`);
-    const rename = db.prepare(`UPDATE news_facts SET player = ?, player_raw = COALESCE(player_raw, ?), position = ? WHERE id = ?`);
-    const drop = db.prepare(`DELETE FROM news_facts WHERE id = ?`);
-    const keepRaw = db.prepare(`UPDATE news_facts SET player_raw = player WHERE player_raw IS NULL AND player IS NOT NULL`);
-    const changes = new Map<string, number>();
-    let renamed = 0;
-    let merged = 0;
+    const rows = db.prepare(`${PLAYER_ROW_SQL} WHERE player IS NOT NULL AND team IS NOT NULL ORDER BY id`).all() as PlayerRow[];
+    let res = { changes: new Map<string, number>(), renamed: 0, merged: 0 };
     db.transaction(() => {
-      for (const r of rows) {
-        const match = rosterMatch(roster, r.team, r.player, r.position);
-        if (!match) continue;
-        const name = fullName(match);
-        const pos = factPositionOf(match.position) ?? r.position;
-        if (name === r.player && pos === r.position) continue;
-        const key = `${r.team}: ${r.player}${r.position && pos !== r.position ? ` [${r.position}]` : ''} -> ${name}${pos !== r.position ? ` [${pos}]` : ''}`;
-        changes.set(key, (changes.get(key) ?? 0) + 1);
-        if (dryRun) continue;
-        if (clash.get(r.source_url, r.team_raw, name, r.status, r.id)) {
-          drop.run(r.id);
-          merged += 1;
-        } else {
-          rename.run(name, r.player, pos, r.id);
-          renamed += 1;
+      res = resolveStoredPlayers(db, roster, rows, dryRun);
+      if (!dryRun) db.prepare(`UPDATE news_facts SET player_raw = player WHERE player_raw IS NULL AND player IS NOT NULL`).run();
+    })();
+    for (const [k, n] of [...res.changes].sort()) console.log(`  ${k}${n > 1 ? ` (${n})` : ''}`);
+    log.info(dryRun ? `dry run: ${[...res.changes.values()].reduce((a, b) => a + b, 0)} fact(s) would change` : `renamed ${res.renamed} fact(s), removed ${res.merged} same-source duplicate(s)`);
+  });
+} else if (cmd === 'teams') {
+  // After adding names to the "news" section of config/team-aliases.json: give
+  // facts stored with no team their CFBD team, then resolve their player names
+  // against that team's roster. Only rows whose team is NULL are touched, so it
+  // is safe to re-run. --dry-run prints only.
+  runJob('news:teams', async () => {
+    loadEnv();
+    const dryRun = flag('dry-run');
+    const db = openDb();
+    const aliases = loadAliases();
+    const season = seasonFor(new Date());
+    const canonical = teamsInSeason(db, season);
+    if (canonical.size === 0) throw new Error(`no games stored for ${season}; cannot tell which names are CFBD teams`);
+    const kalshiPlusNews = { ...aliases.kalshi, ...(aliases.news ?? {}) };
+    const open = db.prepare(`SELECT team_raw, COUNT(*) AS n FROM news_facts WHERE team IS NULL GROUP BY team_raw ORDER BY n DESC`).all() as { team_raw: string; n: number }[];
+    const fix = open.map((r) => ({ ...r, team: resolveTeam(r.team_raw, kalshiPlusNews) })).filter((r) => canonical.has(r.team));
+    for (const r of fix) console.log(`  ${r.team_raw} -> ${r.team} (${r.n})`);
+    const left = open.filter((r) => !fix.some((f) => f.team_raw === r.team_raw));
+    const total = fix.reduce((n, r) => n + r.n, 0);
+    if (fix.length === 0) {
+      log.info(`nothing to resolve; ${left.length} name(s) still have no CFBD team`);
+      return;
+    }
+    const roster = await loadRoster(season);
+    const setTeam = db.prepare(`UPDATE news_facts SET team = ? WHERE team IS NULL AND team_raw = ?`);
+    const ids = db.prepare(`SELECT id FROM news_facts WHERE team IS NULL AND team_raw = ?`);
+    let res = { changes: new Map<string, number>(), renamed: 0, merged: 0 };
+    db.transaction(() => {
+      const rows: PlayerRow[] = [];
+      for (const r of fix) {
+        const touched = (ids.all(r.team_raw) as { id: number }[]).map((x) => x.id);
+        if (!dryRun) setTeam.run(r.team, r.team_raw);
+        for (const id of touched) {
+          const row = db.prepare(`${PLAYER_ROW_SQL} WHERE id = ? AND player IS NOT NULL`).get(id) as PlayerRow | undefined;
+          if (row) rows.push({ ...row, team: r.team });
         }
       }
-      if (!dryRun) keepRaw.run();
+      res = resolveStoredPlayers(db, roster, rows, dryRun);
     })();
-    for (const [k, n] of [...changes].sort()) console.log(`  ${k}${n > 1 ? ` (${n})` : ''}`);
-    log.info(dryRun ? `dry run: ${[...changes.values()].reduce((a, b) => a + b, 0)} fact(s) would change` : `renamed ${renamed} fact(s), removed ${merged} same-source duplicate(s)`);
+    for (const [k, n] of [...res.changes].sort()) console.log(`  ${k}${n > 1 ? ` (${n})` : ''}`);
+    log.info(
+      dryRun
+        ? `dry run: ${total} fact(s) under ${fix.length} name(s) would get a team, ${[...res.changes.values()].reduce((a, b) => a + b, 0)} player name(s) would change; ${left.length} name(s) stay unresolved`
+        : `${total} fact(s) under ${fix.length} name(s) now have a team; renamed ${res.renamed} player(s), removed ${res.merged} same-source duplicate(s); ${left.length} name(s) stay unresolved`,
+    );
   });
 } else if (cmd === 'report') {
   runJob('news:report', async () => {
@@ -389,6 +456,6 @@ if (cmd === 'extract') {
     }
   });
 } else {
-  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|players|availability|report> [options]');
+  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|gameref|players|teams|availability|report> [options]');
   process.exit(2);
 }

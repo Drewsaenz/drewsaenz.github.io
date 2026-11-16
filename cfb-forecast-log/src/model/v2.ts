@@ -86,6 +86,59 @@ export function sameName(spoken: string, rostered: string): boolean {
   return editDistance(sFirst, rFirst) <= 2 || soundsAlike(sFirst)[0] === soundsAlike(rFirst)[0];
 }
 
+const lastNamesMatch = (a: string, b: string) => a === b || (Math.min(a.length, b.length) >= 5 && editDistance(a, b) <= 1);
+
+/**
+ * Stricter matcher, used from v5.2 on (sameName is frozen: v2 to v5.1 depend on
+ * it). sameName called two teammates one player whenever they shared a last
+ * name and a first initial (Dante Moore the QB and Dakorien Moore the WR;
+ * Jared and Jamison Curtis), and let a bare last name match every teammate who
+ * has it. Here:
+ *   - last names match as before (exact, or one edit when both are 5+ letters);
+ *   - first names must be equal, or one an initial of the other ("J." and
+ *     "Ja'Kobi"), or a short form (Kam/Kamron, Dom/Dominic: 3+ letters that
+ *     start the other), or within one edit (two when the longer has 6+
+ *     letters: Graceson/Grayson, Xavian/Xavon);
+ *   - a bare last name matches only another bare last name, unless
+ *     `loneSurname` is set: the caller has already narrowed the field (the
+ *     team's starting QB, a single candidate).
+ */
+export function sameNameStrict(a: string, b: string, loneSurname = false): boolean {
+  const s = nameTokens(a);
+  const r = nameTokens(b);
+  if (s.length === 0 || r.length === 0) return false;
+  if (!lastNamesMatch(s[s.length - 1], r[r.length - 1])) return false;
+  if (s.length === 1 || r.length === 1) return loneSurname || s.length === r.length;
+  const [x, y] = [s[0], r[0]];
+  if (x === y) return true;
+  if (x.length === 1 || y.length === 1) return x[0] === y[0];
+  if (Math.min(x.length, y.length) >= 3 && (x.startsWith(y) || y.startsWith(x))) return true; // Kam/Kamron, Dom/Dominic
+  return editDistance(x, y) <= (Math.max(x.length, y.length) >= 6 ? 2 : 1);
+}
+
+/** How two player names are compared. The third argument is ignored by sameName. */
+export type NameMatch = (a: string, b: string, loneSurname?: boolean) => boolean;
+
+/**
+ * Bare last names -> the one full name in `names` that carries that last name.
+ * A last name shared by two different full names (Texas: Cam, Devin and Jordan
+ * Coleman) stays as it is, so it joins nobody.
+ */
+export function resolveLoneSurnames(names: Iterable<string>): Map<string, string> {
+  const all = [...new Set(names)];
+  const full: string[] = [];
+  for (const n of all) {
+    if (nameTokens(n).length > 1 && !full.some((f) => sameNameStrict(f, n))) full.push(n);
+  }
+  const out = new Map<string, string>();
+  for (const n of all) {
+    if (nameTokens(n).length !== 1) continue;
+    const hits = full.filter((f) => sameNameStrict(n, f, true));
+    if (hits.length === 1) out.set(n, hits[0]);
+  }
+  return out;
+}
+
 // ------------------------------------------------------------ starters
 
 export interface Starter {

@@ -1,0 +1,34 @@
+{
+  "model_version": "v5.2-fused",
+  "base_model_version": "v1-blend",
+  "injury_model_version": "v4.2-avail",
+  "fitted_at": "2026-11-09T20:25:53.148Z",
+  "temper": 1.2433,
+  "coefs": {
+    "a0": 0.0013535687240094289,
+    "a": 0.8102418469175958,
+    "b": 0.13657109169760284,
+    "c": 0.14105
+  },
+  "priors": {
+    "a0": 0,
+    "a": 0.8401,
+    "b": 0.1599,
+    "c": 0.14105
+  },
+  "prior_weight": 40,
+  "min_injury_rows": 100,
+  "fade": {
+    "full_hours": 72,
+    "zero_hours": 0
+  },
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v5.2-fused = v5.1-fused's formula, fitted coefficients and fresh-news rule, with the injury layer read through config/model-v4.2.json: stricter player-name matching (teammates who share a last name and an initial are no longer one player; a bare last name joins a full name only when one player on file carries it) and a fact with no channel counted as its own outlet. The same matching applies to the 'already out for the previous game' check. Motivated by the 2026-11-12 audit, which found nine pairs of different teammates merged in the stored facts, two of them a starting QB with a non-QB. Approved by Drew 2026-11-12. Any change after v5.2 rows exist is a new model_version.",
+  "fit_summary": {
+    "copied_from": "v5.1-fused",
+    "note": "Same coefficients as v5 and v5.1; c was held at its prior in that fit, so nothing in it depends on how names were matched."
+  }
+}
