@@ -36,7 +36,8 @@
     "scheduler": "tsx src/scheduler.ts",
     "db:init": "tsx -e \"require('./src/db').openDb(); console.log('ok')\"",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "power": "tsx scripts/power.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

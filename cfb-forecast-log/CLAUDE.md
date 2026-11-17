@@ -314,6 +314,13 @@ Writes no rows. Probability = latest scheduled v4-avail row for the game if logg
 Margin = sd 13.5 normal quantile of that probability; total = Vegas over/under when posted, else SP+ off + opp SP+ def - national
 average, both sides (checked 2026-11-05 on 96 posted totals: bias -0.2, MAE 4.1). Exports probabilities and scores only, never FEI numbers.
 
+### `power` (on demand)
+
+`npm run power -- [--week N] [--out <file.json>]` (`scripts/power.ts`): every rated team's expected margin, in points, against an
+FBS-average team on a neutral field, ranked, with record and movement since the previous ratings week. v1 per-source
+probabilities (opponent = each source's mean rating, home = 0) averaged unclamped, tempered by v3's divisor, then the sd 13.5
+normal quantile. No line, no availability. Reads only: no rows, no model_version. Exports the blended rating only, never FEI numbers.
+
 ### Which models to read (Drew, 2026-11-09)
 
 Read three: **v5.1-fused** (main model; v5-fused until 2026-11-12), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
