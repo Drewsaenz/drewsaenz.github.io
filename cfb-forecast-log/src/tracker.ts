@@ -118,7 +118,15 @@ export function collectState(db: Db, now: Date, logText: string, report: { file:
           WHERE a.season = ? AND a.week = ? GROUP BY a.source HAVING COUNT(*) >= 50 AND SUM(a.rating <> b.rating) = 0`,
       )
       .all(lastRated.season, lastRated.week) as { source: string }[];
-    for (const s of stale) warnings.push(`Week ${lastRated.week} ${s.source.toUpperCase()} ratings are identical to week ${lastRated.week - 1}. The source had not updated when ratings were pulled; re-run npm run ratings.`);
+    // Before that week's Tuesday snapshot, unchanged ratings are expected (a weekend preview run pulls them
+    // before the sources update), so warn only once a Tuesday snapshot was taken on them. One line for all sources.
+    const tuesdayTaken = db
+      .prepare(`SELECT 1 FROM forecasts f JOIN games g ON g.game_id = f.game_id WHERE f.snapshot_kind = 'tuesday' AND g.season = ? AND g.week = ? LIMIT 1`)
+      .get(lastRated.season, lastRated.week);
+    if (stale.length > 0 && tuesdayTaken) {
+      const names = stale.map((x) => (x.source === 'sp' ? 'SP+' : x.source.toUpperCase())).join(', ');
+      warnings.push(`Week ${lastRated.week} ${names} ratings are identical to week ${lastRated.week - 1}: the source had not updated when ratings were pulled, so Tuesday's picks used last week's numbers. Re-run npm run ratings.`);
+    }
   }
 
   const weeksScored = (
