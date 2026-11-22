@@ -314,6 +314,16 @@ Writes no rows. Probability = latest scheduled v4-avail row for the game if logg
 Margin = sd 13.5 normal quantile of that probability; total = Vegas over/under when posted, else SP+ off + opp SP+ def - national
 average, both sides (checked 2026-11-05 on 96 posted totals: bias -0.2, MAE 4.1). Exports probabilities and scores only, never FEI numbers.
 
+### `app` (on demand): Forecast Desk
+
+`npm run app`, then http://localhost:3300 (`APP_PORT` to change). A local web page over the same database
+(`src/app/server.ts`, queries in `src/app/data.ts`, page in `src/app/page.ts`). Listens on 127.0.0.1 only.
+Tabs: Board (the tracker page), Games (every model, Kalshi and Vegas at each snapshot for one game, plus that
+game's availability news), News (facts by team, recaps hidden, SEC filter), Health & actions (job runs from
+data/jobs.log, caffeinate and cron checks, counts). Its only actions are the fixed npm/git commands in `ACTIONS`
+(preview = ratings + snapshot:manual + tracker; grade = resolve + tracker; tracker; git pull --ff-only), one at
+a time, POSTs from other origins refused. It writes nothing itself and has no order or Kalshi-auth code.
+
 ### `power` (on demand)
 
 `npm run power -- [--week N] [--out <file.json>]` (`scripts/power.ts`): every rated team's expected margin, in points, against an

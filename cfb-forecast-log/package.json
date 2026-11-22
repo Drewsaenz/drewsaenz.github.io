@@ -15,6 +15,7 @@
     "resolve": "tsx src/jobs/resolve.ts",
     "report": "tsx src/jobs/report.ts",
     "tracker": "tsx src/jobs/tracker.ts",
+    "app": "tsx src/app/server.ts",
     "news:extract": "tsx scripts/news.ts extract",
     "news:windows": "tsx scripts/news.ts windows",
     "news:import": "tsx scripts/news.ts import",
