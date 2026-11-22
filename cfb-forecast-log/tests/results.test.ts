@@ -62,6 +62,8 @@ test('history: every model on one axis, markets from all games, later models sta
   assert.equal(h.weeks[0].kalshi, 0.25);
   const html = renderResults({ ...buildResults('v1-blend', rows.filter((r) => r.model_version === 'v1-blend'), cfg), history: { ...h, focus: ['v3-anchor'] } });
   assert.match(html, /v3 \(from Wk 10\)/);
-  assert.match(html, /class="faint"><i[^>]*><\/i>v1/);
+  assert.match(html, /class="lg faint" data-k="v1"/); // older model: faded, toggleable
+  assert.match(html, /class="lg strong" data-k="Kalshi"/);
+  assert.match(html, /<g class="ser" data-k="v3">/);
   assert.match(html, /<th>v3<\/th><th>v1<\/th><th>Kalshi<\/th>/);
 });

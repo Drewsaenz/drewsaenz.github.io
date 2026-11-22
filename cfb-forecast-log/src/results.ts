@@ -163,6 +163,8 @@ interface Series {
   color: string; // CSS var
   /** Line weight: 'strong' for the markets, 'faint' for older models; default in between. */
   weight?: 'strong' | 'normal' | 'faint';
+  /** Stable id for toggling the series from its legend (point-hover charts). */
+  key?: string;
   values: (number | null)[];
   tips: string[];
 }
@@ -230,7 +232,7 @@ function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: num
             : '',
         )
         .join('');
-      return opts.pointHover ? `<g class="ser">${lines + dots}</g>` : lines + dots;
+      return opts.pointHover ? `<g class="ser"${s.key ? ` data-k="${esc(s.key)}"` : ''}>${lines + dots}</g>` : lines + dots;
     })
     .join('');
   // Hit targets: one invisible column per x position carrying every series' value.
@@ -307,6 +309,7 @@ export function renderResults(r: ResultsView): string {
   const modelSeries: Series[] = h
     ? h.models
         .map((m, i) => ({
+          key: short(m),
           name: `${short(m)}${(() => { const k = h.weeks.findIndex((w) => w.models[m] != null); return k > 0 ? ` (from ${h.weeks[k].label})` : ''; })()}`,
           weight: (isCurrent(m) ? 'normal' : 'faint') as Series['weight'],
           color: MODEL_COLORS[i % MODEL_COLORS.length],
@@ -317,8 +320,8 @@ export function renderResults(r: ResultsView): string {
     : [];
   const marketSeries: Series[] = h
     ? [
-        { ...S3[1], weight: 'strong', values: h.weeks.map((w) => w.kalshi), tips: h.weeks.map((w) => `Kalshi ${f3(w.kalshi)}`) },
-        { ...S3[2], weight: 'strong', values: h.weeks.map((w) => w.vegas), tips: h.weeks.map((w) => `Vegas ${f3(w.vegas)}`) },
+        { ...S3[1], key: 'Kalshi', weight: 'strong', values: h.weeks.map((w) => w.kalshi), tips: h.weeks.map((w) => `Kalshi ${f3(w.kalshi)}`) },
+        { ...S3[2], key: 'Vegas', weight: 'strong', values: h.weeks.map((w) => w.vegas), tips: h.weeks.map((w) => `Vegas ${f3(w.vegas)}`) },
       ]
     : [];
   // Legend reads markets, current models, older models. Drawn bottom to top: older models, the thick market
@@ -336,7 +339,11 @@ export function renderResults(r: ResultsView): string {
   const briers = weekSeries.flatMap((x) => x.values).filter((x): x is number => x !== null);
   const brierDigits = briers.length > 0 && Math.max(...briers) - Math.min(...briers) < 0.004 ? 4 : 3;
   const weekChart = lineChart({ label: 'Brier score by week, lower is better', xLabels, yFmt: (v) => v.toFixed(brierDigits), dots: 'all', series: weekSeries, pointHover: true });
-  const weekLegend = legend(legendSeries.map((x) => ({ name: x.name, color: x.color, weight: x.weight })));
+  const weekLegend = h
+    ? `<div class="legend toggles" role="group" aria-label="Show or hide lines">${legendSeries
+        .map((x) => `<button type="button" class="lg ${x.weight ?? ''}" data-k="${esc(x.key!)}" aria-pressed="true" title="Show or hide ${esc(x.key!)}"><i style="background:var(${x.color})"></i>${esc(x.name)}</button>`)
+        .join('')}<span class="lgq"><button type="button" class="lgset" data-set="all">All</button><button type="button" class="lgset" data-set="current">Markets + v5</button><button type="button" class="lgset" data-set="read">Markets + v5.1, v3, v1</button></span></div>`
+    : legend(legendSeries.map((x) => ({ name: x.name, color: x.color, weight: x.weight })));
   const weekTable = h
     ? table(
         ['Week', 'Games', ...h.models.map(short), 'Kalshi', 'Vegas'],
@@ -380,7 +387,7 @@ export function renderResults(r: ResultsView): string {
 ${tiles}
 <section class="card">
   <div class="label">Accuracy by week</div>
-  <div class="small">Brier score, lower is better. A model is ahead when its line sits below Kalshi and Vegas. Each model's line starts the week it was added${h ? '; Kalshi and Vegas (thickest) cover every graded game, v5 and later are drawn in full, older models are faded' : ''}.</div>
+  <div class="small">Brier score, lower is better. A model is ahead when its line sits below Kalshi and Vegas. Each model's line starts the week it was added${h ? '; Kalshi and Vegas (thickest) cover every graded game, v5 and later are drawn in full, older models are faded. Click a name to hide or show its line' : ''}.</div>
   ${weekLegend}
   ${weekChart}
   ${weekTable}
@@ -418,6 +425,12 @@ svg.chart{width:100%;height:auto;display:block;margin-top:4px;overflow:visible}s
 .chart .ring{stroke:var(--card);stroke-width:2}
 .chart .hit,.chart .hitc{fill:transparent;cursor:crosshair}
 .chart .xhair{stroke:var(--axis);stroke-width:1;visibility:hidden}
+.legend.toggles{align-items:center}
+.legend .lg{font:inherit;font-size:13px;color:inherit;background:none;border:1px solid transparent;border-radius:999px;padding:2px 8px;cursor:pointer}
+.legend .lg:hover{border-color:var(--line)}.legend .lg.off{opacity:.35;text-decoration:line-through}
+.legend .lg.strong{color:var(--ink);font-weight:600}.legend .lg.strong i{height:5px}.legend .lg.faint{opacity:.6}.legend .lg.faint.off{opacity:.3}
+.legend .lgq{display:inline-flex;gap:4px;margin-left:auto}.legend .lgset{font:inherit;font-size:12px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:2px 8px;cursor:pointer}
+.legend .lgset:hover{color:var(--ink)}.chart .ser.gone{display:none}
 .chart.ph{cursor:crosshair}.chart .ser{transition:opacity .12s}.chart.hl .ser{opacity:.12}.chart.hl .ser.on{opacity:1}
 .chart.hl .ser.on polyline{stroke-width:4;stroke-opacity:1}.chart.hl .ser.on circle{fill-opacity:1}.chart .pt.cur{r:7}
 details{margin-top:8px;font-size:13px}summary{cursor:pointer;color:var(--muted)}
@@ -436,10 +449,19 @@ var svg=t.ownerSVGElement,xh=svg&&svg.querySelector('.xhair'),dx=t.getAttribute(
 if(xh&&dx){xh.setAttribute('x1',dx);xh.setAttribute('x2',dx);xh.style.visibility='visible';}});
 document.addEventListener('pointerleave',hide);
 // Point charts: highlight the one line nearest the pointer and show only its value.
+// Legend toggles: click a name to hide/show its line; quick sets; remembered per browser.
+document.querySelectorAll('.legend.toggles').forEach(function(lg){var card=lg.closest('section')||document,svg=card.querySelector('svg.chart.ph');if(!svg)return;
+var KEY='tracker-hidden-lines',hidden={};try{hidden=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){}
+function apply(){lg.querySelectorAll('.lg').forEach(function(b){var off=!!hidden[b.dataset.k];b.classList.toggle('off',off);b.setAttribute('aria-pressed',off?'false':'true')});
+svg.querySelectorAll('.ser[data-k]').forEach(function(g){g.classList.toggle('gone',!!hidden[g.dataset.k])});try{localStorage.setItem(KEY,JSON.stringify(hidden))}catch(e){}}
+lg.querySelectorAll('.lg').forEach(function(b){b.addEventListener('click',function(){var k=b.dataset.k;if(hidden[k])delete hidden[k];else hidden[k]=1;apply()})});
+lg.querySelectorAll('.lgset').forEach(function(b){b.addEventListener('click',function(){var set=b.dataset.set;hidden={};lg.querySelectorAll('.lg').forEach(function(x){var k=x.dataset.k,mkt=k==='Kalshi'||k==='Vegas';
+if(set==='current'&&!mkt&&!/^v([5-9]|\d\d)/.test(k))hidden[k]=1;if(set==='read'&&!mkt&&['v5.1','v3','v1'].indexOf(k)<0)hidden[k]=1});apply()})});
+apply();});
 document.querySelectorAll('svg.chart.ph').forEach(function(svg){
 function clear(){svg.classList.remove('hl');svg.querySelectorAll('.ser.on').forEach(function(g){g.classList.remove('on')});svg.querySelectorAll('.pt.cur').forEach(function(c){c.classList.remove('cur')});tip.style.display='none';}
 svg.addEventListener('pointermove',function(e){e.stopPropagation();var m=svg.getScreenCTM();if(!m)return;var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var q=pt.matrixTransform(m.inverse());
-var best=null,bd=1e9;svg.querySelectorAll('.pt').forEach(function(c){var dx=c.cx.baseVal.value-q.x,dy=c.cy.baseVal.value-q.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c}});
+var best=null,bd=1e9;svg.querySelectorAll('.ser:not(.gone) .pt').forEach(function(c){var dx=c.cx.baseVal.value-q.x,dy=c.cy.baseVal.value-q.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c}});
 if(!best||bd>28*28){clear();return;}
 clear();svg.classList.add('hl');best.parentNode.classList.add('on');best.classList.add('cur');
 tip.textContent=best.getAttribute('data-ptip');tip.style.display='block';var x=e.clientX+14,y=e.clientY+14;if(x+tip.offsetWidth>innerWidth-8)x=e.clientX-tip.offsetWidth-14;if(y+tip.offsetHeight>innerHeight-8)y=e.clientY-tip.offsetHeight-14;tip.style.left=x+'px';tip.style.top=y+'px';});
