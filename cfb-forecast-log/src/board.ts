@@ -11,6 +11,10 @@ import { qbFlags } from './news';
 /** Bid/ask gap (cents) above which a maker fill at the bid is unlikely. */
 export const WIDE_SPREAD_CENTS = 5;
 
+/** SEC members (CFBD names), for the board's SEC filter. */
+export const SEC_TEAMS = new Set(['Alabama', 'Arkansas', 'Auburn', 'Florida', 'Georgia', 'Kentucky', 'LSU', 'Mississippi State', 'Missouri', 'Oklahoma', 'Ole Miss', 'South Carolina', 'Tennessee', 'Texas', 'Texas A&M', 'Vanderbilt']);
+export const isSecGame = (r: { team: string; opponent: string }) => SEC_TEAMS.has(r.team) || SEC_TEAMS.has(r.opponent);
+
 export type BoardTag = 'edge' | 'wide' | 'news' | 'none';
 
 export interface BoardRow {
@@ -153,6 +157,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   const modelLabel = hasV51 ? 'Model v5.1' : hasV5 ? 'Model v5' : hasV41 ? 'Model v4.1' : hasV4 ? 'Model v4' : hasV2 ? 'Model v2' : 'Model v1';
   const counts = { edge: 0, wide: 0, news: 0, none: 0 };
   for (const r of b.rows) counts[r.tag] += 1;
+  const secCount = b.rows.filter(isSecGame).length;
   const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : b.kind === 'report' ? `After the official availability report, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
   const body = b.rows
     .map((r) => {
@@ -161,7 +166,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
       const result = r.outcome === null ? '' : `<span class="res ${r.outcome ? 'won' : 'lost'}">${r.outcome ? 'Won' : 'Lost'}</span>`;
       const tag = r.tag === 'none' ? '' : `<span class="tag ${r.tag}" title="${esc(TAG[r.tag].title)}">${TAG[r.tag].label}</span>`;
       const gap = r.vegas === null ? '' : r.kalshi - r.vegas;
-      return `<tr data-tag="${r.tag}">
+      return `<tr data-tag="${r.tag}" data-sec="${isSecGame(r) ? 1 : 0}">
   <td><div class="team">${esc(r.team)} ${result}</div><div class="sub">vs ${esc(r.opponent)} · ${esc(fmtTime(r.kickoff_utc))}</div>${qb}</td>
   <td class="num edge ${r.edge >= b.edge_min ? 'pos' : ''}">${r.edge >= 0 ? '+' : '−'}${Math.round(Math.abs(r.edge) * 100)}</td>
   <td class="num">${p2(r.model)}${v1note}</td>
@@ -178,6 +183,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   <div class="chips" role="group" aria-label="Filter games">
     <button type="button" class="chip on" data-f="edge">Edge (${counts.edge})</button>
     <button type="button" class="chip" data-f="flagged">Edge + flagged (${counts.edge + counts.wide + counts.news})</button>
+    <button type="button" class="chip" data-f="sec">SEC (${secCount})</button>
     <button type="button" class="chip" data-f="all">All games (${b.rows.length})</button>
   </div>
   <div class="scroll"><table class="bt">
@@ -206,7 +212,7 @@ export const BOARD_JS = `
 (function(){var card=document.querySelector('.board');if(!card)return;
 var rows=card.querySelectorAll('tbody tr'),empty=card.querySelector('.empty'),key='board-filter';
 function apply(f){var shown=0;rows.forEach(function(r){var t=r.dataset.tag;
-var ok=f==='all'||(f==='edge'&&t==='edge')||(f==='flagged'&&t!=='none');r.hidden=!ok;if(ok)shown++;});
+var ok=f==='all'||(f==='edge'&&t==='edge')||(f==='flagged'&&t!=='none')||(f==='sec'&&r.dataset.sec==='1');r.hidden=!ok;if(ok)shown++;});
 empty.hidden=shown>0;card.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('on',c.dataset.f===f)});
 try{localStorage.setItem(key,f)}catch(e){}}
 card.querySelectorAll('.chip').forEach(function(c){c.addEventListener('click',function(){apply(c.dataset.f)})});

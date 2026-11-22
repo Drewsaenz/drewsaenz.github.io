@@ -67,3 +67,13 @@ test('a manual snapshot covering later weeks still shows only the current week, 
   assert.equal(b.rows[0].model, 0.43);
   assert.match(renderBoard(b, (s) => s), /Model v4/);
 });
+
+test('SEC filter: games with an SEC team get data-sec and a chip with their count', async () => {
+  const { renderBoard, isSecGame } = await import('../src/board');
+  assert.ok(isSecGame({ team: 'Indiana', opponent: 'Texas' }));
+  assert.ok(!isSecGame({ team: 'UCLA', opponent: 'Michigan' }));
+  const row = (team: string, opponent: string) => ({ game_id: 1, team, opponent, kickoff_utc: '2026-11-28T20:30:00Z', v1: 0.5, v2: null, v4: null, v41: null, v5: null, v51: null, model: 0.5, kalshi: 0.5, vegas: 0.5, edge: 0, bid: 49, ask: 51, tag: 'none' as const, qb: [], outcome: null });
+  const html = renderBoard({ kind: 'tuesday', snapshot_utc: '2026-11-24T13:00:00Z', rows: [row('Texas', 'Texas A&M'), row('UCLA', 'USC')] as never, edge_min: 0.05, news_gap_min: 0.1 }, (x) => x);
+  assert.match(html, /data-f="sec">SEC \(1\)/);
+  assert.equal((html.match(/data-sec="1"/g) ?? []).length, 1);
+});
