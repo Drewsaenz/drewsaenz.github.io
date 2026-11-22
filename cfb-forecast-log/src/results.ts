@@ -187,7 +187,7 @@ const W = 640;
 const H = 230;
 const M = { l: 52, r: 16, t: 12, b: 30 };
 
-function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: number; yFmt: (v: number) => string; zero?: boolean; dots: 'all' | 'end'; label: string }): string {
+function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: number; yFmt: (v: number) => string; zero?: boolean; dots: 'all' | 'end'; label: string; pointHover?: boolean }): string {
   const all = opts.series.flatMap((s) => s.values.filter((v): v is number => v !== null));
   let lo = Math.min(...all);
   let hi = Math.max(...all);
@@ -212,7 +212,7 @@ function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: num
     .map((l, i) => (i % every === 0 || i === n - 1 ? `<text x="${x(i)}" y="${H - 8}" class="tick" text-anchor="middle">${esc(l)}</text>` : ''))
     .join('');
   const marks = opts.series
-    .map((s) => {
+    .map((s, si) => {
       const pts = s.values.map((v, i) => (v === null ? null : [x(i), y(v)] as const));
       const segs: string[] = [];
       let cur: string[] = [];
@@ -224,20 +224,24 @@ function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: num
       const lines = segs.filter((sg) => sg.includes(' ')).map((sg) => `<polyline points="${sg}" fill="none" stroke="var(${s.color})" stroke-width="${s.weight === 'strong' ? 4 : s.weight === 'faint' ? 1.25 : 2}"${s.weight === 'faint' ? ' stroke-opacity="0.4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
       const lastIdx = pts.map((p, i) => (p ? i : -1)).filter((i) => i >= 0).pop();
       const dots = pts
-        .map((p, i) => (p && (opts.dots === 'all' || i === lastIdx) ? `<circle cx="${p[0]}" cy="${p[1]}" r="${s.weight === 'strong' ? 5 : s.weight === 'faint' ? 2.5 : 3.5}" fill="var(${s.color})"${s.weight === 'faint' ? ' fill-opacity="0.5"' : ''} class="ring"/>` : ''))
+        .map((p, i) =>
+          p && (opts.dots === 'all' || i === lastIdx)
+            ? `<circle cx="${p[0]}" cy="${p[1]}" r="${s.weight === 'strong' ? 5 : s.weight === 'faint' ? 2.5 : 3.5}" fill="var(${s.color})"${s.weight === 'faint' ? ' fill-opacity="0.5"' : ''} class="ring${opts.pointHover ? ' pt' : ''}"${opts.pointHover ? ` data-ptip="${esc(`${opts.xLabels[i]}\n${s.tips[i]}`)}"` : ''}/>`
+            : '',
+        )
         .join('');
-      return lines + dots;
+      return opts.pointHover ? `<g class="ser">${lines + dots}</g>` : lines + dots;
     })
     .join('');
   // Hit targets: one invisible column per x position carrying every series' value.
   const colW = n === 1 ? pw : pw / (n - 1);
-  const hits = opts.xLabels
+  const hits = opts.pointHover ? '' : opts.xLabels
     .map((l, i) => {
       const tip = [l, ...opts.series.map((s) => s.tips[i]).filter(Boolean)].join('\n');
       return `<rect x="${x(i) - colW / 2}" y="${M.t}" width="${colW}" height="${ph}" class="hit" data-tip="${esc(tip)}" data-x="${x(i)}"/>`;
     })
     .join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}" class="chart">${grid}${xt}<line class="xhair" x1="0" x2="0" y1="${M.t}" y2="${M.t + ph}"/>${marks}${hits}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label)}" class="chart${opts.pointHover ? ' ph' : ''}">${grid}${xt}<line class="xhair" x1="0" x2="0" y1="${M.t}" y2="${M.t + ph}"/>${marks}${hits}</svg>`;
 }
 
 function calibrationChart(bins: CalibrationBin[]): string {
@@ -331,7 +335,7 @@ export function renderResults(r: ResultsView): string {
   // Lines that sit within a few thousandths of each other need a fourth decimal on the axis.
   const briers = weekSeries.flatMap((x) => x.values).filter((x): x is number => x !== null);
   const brierDigits = briers.length > 0 && Math.max(...briers) - Math.min(...briers) < 0.004 ? 4 : 3;
-  const weekChart = lineChart({ label: 'Brier score by week, lower is better', xLabels, yFmt: (v) => v.toFixed(brierDigits), dots: 'all', series: weekSeries });
+  const weekChart = lineChart({ label: 'Brier score by week, lower is better', xLabels, yFmt: (v) => v.toFixed(brierDigits), dots: 'all', series: weekSeries, pointHover: true });
   const weekLegend = legend(legendSeries.map((x) => ({ name: x.name, color: x.color, weight: x.weight })));
   const weekTable = h
     ? table(
@@ -414,6 +418,8 @@ svg.chart{width:100%;height:auto;display:block;margin-top:4px;overflow:visible}s
 .chart .ring{stroke:var(--card);stroke-width:2}
 .chart .hit,.chart .hitc{fill:transparent;cursor:crosshair}
 .chart .xhair{stroke:var(--axis);stroke-width:1;visibility:hidden}
+.chart.ph{cursor:crosshair}.chart .ser{transition:opacity .12s}.chart.hl .ser{opacity:.12}.chart.hl .ser.on{opacity:1}
+.chart.hl .ser.on polyline{stroke-width:4;stroke-opacity:1}.chart.hl .ser.on circle{fill-opacity:1}.chart .pt.cur{r:7}
 details{margin-top:8px;font-size:13px}summary{cursor:pointer;color:var(--muted)}
 details table{margin-top:6px}
 #tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--card);font-size:12px;line-height:1.4;padding:6px 8px;border-radius:6px;white-space:pre;z-index:10;display:none;max-width:280px}
@@ -428,5 +434,15 @@ var x=e.clientX+14,y=e.clientY+14;if(x+tip.offsetWidth>innerWidth-8)x=e.clientX-
 tip.style.left=x+'px';tip.style.top=y+'px';
 var svg=t.ownerSVGElement,xh=svg&&svg.querySelector('.xhair'),dx=t.getAttribute('data-x');
 if(xh&&dx){xh.setAttribute('x1',dx);xh.setAttribute('x2',dx);xh.style.visibility='visible';}});
-document.addEventListener('pointerleave',hide);})();
+document.addEventListener('pointerleave',hide);
+// Point charts: highlight the one line nearest the pointer and show only its value.
+document.querySelectorAll('svg.chart.ph').forEach(function(svg){
+function clear(){svg.classList.remove('hl');svg.querySelectorAll('.ser.on').forEach(function(g){g.classList.remove('on')});svg.querySelectorAll('.pt.cur').forEach(function(c){c.classList.remove('cur')});tip.style.display='none';}
+svg.addEventListener('pointermove',function(e){e.stopPropagation();var m=svg.getScreenCTM();if(!m)return;var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var q=pt.matrixTransform(m.inverse());
+var best=null,bd=1e9;svg.querySelectorAll('.pt').forEach(function(c){var dx=c.cx.baseVal.value-q.x,dy=c.cy.baseVal.value-q.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c}});
+if(!best||bd>28*28){clear();return;}
+clear();svg.classList.add('hl');best.parentNode.classList.add('on');best.classList.add('cur');
+tip.textContent=best.getAttribute('data-ptip');tip.style.display='block';var x=e.clientX+14,y=e.clientY+14;if(x+tip.offsetWidth>innerWidth-8)x=e.clientX-tip.offsetWidth-14;if(y+tip.offsetHeight>innerHeight-8)y=e.clientY-tip.offsetHeight-14;tip.style.left=x+'px';tip.style.top=y+'px';});
+svg.addEventListener('pointerleave',clear);});
+})();
 `;
