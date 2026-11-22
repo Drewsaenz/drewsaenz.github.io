@@ -29,7 +29,18 @@ export interface TradePoint {
   maker: number;
 }
 
+/** One graded week across models: Kalshi and Vegas from every graded game, plus each focus model's Brier where it has rows. */
+export interface HistoryWeek {
+  label: string;
+  n: number;
+  kalshi: number | null;
+  vegas: number | null;
+  models: Record<string, number | null>;
+}
+
 export interface ResultsView {
+  /** The by-week chart over every graded week (all focus models); absent in older callers and tests. */
+  history?: { models: string[]; weeks: HistoryWeek[]; focus?: string[] };
   modelVersion: string;
   rows: number;
   overall: AccuracyComparison;
@@ -63,7 +74,55 @@ export function collectResults(db: Db, cfg: ScoringConfig): ResultsView | null {
         ORDER BY g.kickoff_utc, f.ticker`,
     )
     .all(top.model_version) as ResultRow[];
-  return buildResults(top.model_version, onePerGame(rows), cfg);
+  const view = buildResults(top.model_version, onePerGame(rows), cfg);
+  const all = db
+    .prepare(
+      `SELECT f.game_id, f.ticker, f.snapshot_kind, f.model_version, f.my_prob, f.market_mid, f.vegas_prob, f.yes_bid, f.yes_ask, f.outcome,
+              g.season, g.week, g.kickoff_utc, m.yes_team
+         FROM forecasts f JOIN games g ON g.game_id = f.game_id JOIN markets m ON m.ticker = f.ticker
+        WHERE f.snapshot_kind = 'tuesday' AND f.outcome IS NOT NULL
+        ORDER BY g.kickoff_utc, f.ticker`,
+    )
+    .all() as ResultRow[];
+  // Every model with graded Tuesday rows, focus models first (in focus order), then the rest by the week they joined.
+  const firstWeek = new Map<string, string>();
+  for (const r of all) {
+    const k = `${r.season}-${String(r.week).padStart(2, '0')}`;
+    if (!firstWeek.has(r.model_version) || k < firstWeek.get(r.model_version)!) firstWeek.set(r.model_version, k);
+  }
+  const models = [...firstWeek.keys()].sort((a, b) => {
+    const fa = focus.indexOf(a);
+    const fb = focus.indexOf(b);
+    if (fa >= 0 || fb >= 0) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+    return firstWeek.get(a)!.localeCompare(firstWeek.get(b)!) || a.localeCompare(b);
+  });
+  return { ...view, history: { ...buildHistory(onePerGame(all), models), focus: models.filter((m) => focus.includes(m)) } };
+}
+
+/**
+ * Brier by week for several models on one axis. The market lines use every graded game that week
+ * (one market per game, whichever model's row carries it), so a model added mid-season still sits
+ * next to the full Kalshi and Vegas history.
+ */
+export function buildHistory(rows: ResultRow[], models: string[]): { models: string[]; weeks: HistoryWeek[] } {
+  const brier = (ps: { p: number; y: number }[]) => (ps.length === 0 ? null : ps.reduce((s, x) => s + (x.p - x.y) ** 2, 0) / ps.length);
+  const weeks = [...groupBy(rows, (r) => `${r.season}-${String(r.week).padStart(2, '0')}`).entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, wr]) => {
+      const games = new Map<number, ResultRow>();
+      for (const r of wr) if (!games.has(r.game_id)) games.set(r.game_id, r);
+      const g = [...games.values()];
+      const out: Record<string, number | null> = {};
+      for (const m of models) out[m] = brier(wr.filter((r) => r.model_version === m).map((r) => ({ p: r.my_prob, y: r.outcome! })));
+      return {
+        label: `Wk ${wr[0].week}`,
+        n: g.length,
+        kalshi: brier(g.filter((r) => r.market_mid !== null).map((r) => ({ p: r.market_mid!, y: r.outcome! }))),
+        vegas: brier(g.filter((r) => r.vegas_prob !== null).map((r) => ({ p: r.vegas_prob!, y: r.outcome! }))),
+        models: out,
+      };
+    });
+  return { models, weeks };
 }
 
 export function buildResults(modelVersion: string, rows: ResultRow[], cfg: ScoringConfig): ResultsView {
@@ -102,6 +161,8 @@ const pct = (x: number | null) => (x === null ? 'n/a' : `${(x * 100).toFixed(1)}
 interface Series {
   name: string;
   color: string; // CSS var
+  /** Drawn thinner and lighter (models not in the focus list). */
+  faint?: boolean;
   values: (number | null)[];
   tips: string[];
 }
@@ -160,10 +221,10 @@ function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: num
         else if (cur.length) (segs.push(cur.join(' ')), (cur = []));
       }
       if (cur.length) segs.push(cur.join(' '));
-      const lines = segs.filter((sg) => sg.includes(' ')).map((sg) => `<polyline points="${sg}" fill="none" stroke="var(${s.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+      const lines = segs.filter((sg) => sg.includes(' ')).map((sg) => `<polyline points="${sg}" fill="none" stroke="var(${s.color})" stroke-width="${s.faint ? 1.5 : 2.5}"${s.faint ? ' stroke-opacity="0.6"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
       const lastIdx = pts.map((p, i) => (p ? i : -1)).filter((i) => i >= 0).pop();
       const dots = pts
-        .map((p, i) => (p && (opts.dots === 'all' || i === lastIdx) ? `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="var(${s.color})" class="ring"/>` : ''))
+        .map((p, i) => (p && (opts.dots === 'all' || i === lastIdx) ? `<circle cx="${p[0]}" cy="${p[1]}" r="${s.faint ? 3 : 4}" fill="var(${s.color})"${s.faint ? ' fill-opacity="0.7"' : ''} class="ring"/>` : ''))
         .join('');
       return lines + dots;
     })
@@ -205,8 +266,8 @@ function calibrationChart(bins: CalibrationBin[]): string {
   return `<svg viewBox="0 0 ${S} ${S}" role="img" aria-label="Calibration: forecast vs actual win rate" class="chart calib">${grid}${diag}${dots}<text x="${x(0.5)}" y="${S - 2}" class="tick" text-anchor="middle">Model's forecast</text><text transform="translate(10 ${y(0.5)}) rotate(-90)" class="tick" text-anchor="middle">Actually won</text></svg>`;
 }
 
-const legend = (items: { name: string; color: string }[]) =>
-  `<div class="legend">${items.map((i) => `<span><i style="background:var(${i.color})"></i>${esc(i.name)}</span>`).join('')}</div>`;
+const legend = (items: { name: string; color: string; faint?: boolean }[]) =>
+  `<div class="legend">${items.map((i) => `<span${i.faint ? ' class="faint"' : ''}><i style="background:var(${i.color})"></i>${esc(i.name)}</span>`).join('')}</div>`;
 
 const table = (head: string[], body: string[][]) =>
   `<details><summary>Show table</summary><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body
@@ -234,24 +295,41 @@ export function renderResults(r: ResultsView): string {
     { name: 'Kalshi', color: '--s2' },
     { name: 'Vegas', color: '--s3' },
   ];
+  const MODEL_COLORS = ['--s1', '--s4', '--s5', '--s6', '--s7', '--s8', '--s9', '--s10'];
+  const short = (m: string) => m.replace(/-(fused|anchor|blend|avail|qb)$/, '');
+  const h = r.history && r.history.weeks.length > 0 ? r.history : null;
+  const weekSeries: Series[] = h
+    ? [
+        ...h.models.map((m, i) => ({
+          name: `${short(m)}${(() => { const k = h.weeks.findIndex((w) => w.models[m] != null); return k > 0 ? ` (from ${h.weeks[k].label})` : ''; })()}`,
+          faint: h.focus ? !h.focus.includes(m) : false,
+          color: MODEL_COLORS[i % MODEL_COLORS.length],
+          values: h.weeks.map((w) => w.models[m] ?? null),
+          tips: h.weeks.map((w) => (w.models[m] == null ? '' : `${short(m)} ${f3(w.models[m]!)}`)),
+        })),
+        { ...S3[1], values: h.weeks.map((w) => w.kalshi), tips: h.weeks.map((w) => `Kalshi ${f3(w.kalshi)}`) },
+        { ...S3[2], values: h.weeks.map((w) => w.vegas), tips: h.weeks.map((w) => `Vegas ${f3(w.vegas)}`) },
+      ]
+    : [
+        { ...S3[0], values: r.weeks.map((w) => w.acc.mine.brier), tips: r.weeks.map((w) => `Model ${f3(w.acc.mine.brier)}`) },
+        { ...S3[1], values: r.weeks.map((w) => w.acc.market.brier), tips: r.weeks.map((w) => `Kalshi ${f3(w.acc.market.brier)}`) },
+        { ...S3[2], values: r.weeks.map((w) => w.acc.vegas.brier), tips: r.weeks.map((w) => `Vegas ${f3(w.acc.vegas.brier)}`) },
+      ];
+  const xLabels = h ? h.weeks.map((w) => w.label) : r.weeks.map((w) => w.label);
   // Lines that sit within a few thousandths of each other need a fourth decimal on the axis.
-  const briers = r.weeks.flatMap((w) => [w.acc.mine.brier, w.acc.market.brier, w.acc.vegas.brier]).filter((x): x is number => x !== null);
+  const briers = weekSeries.flatMap((x) => x.values).filter((x): x is number => x !== null);
   const brierDigits = briers.length > 0 && Math.max(...briers) - Math.min(...briers) < 0.004 ? 4 : 3;
-  const weekChart = lineChart({
-    label: 'Brier score by week, lower is better',
-    xLabels: r.weeks.map((w) => w.label),
-    yFmt: (v) => v.toFixed(brierDigits),
-    dots: 'all',
-    series: [
-      { ...S3[0], values: r.weeks.map((w) => w.acc.mine.brier), tips: r.weeks.map((w) => `Model ${f3(w.acc.mine.brier)}`) },
-      { ...S3[1], values: r.weeks.map((w) => w.acc.market.brier), tips: r.weeks.map((w) => `Kalshi ${f3(w.acc.market.brier)}`) },
-      { ...S3[2], values: r.weeks.map((w) => w.acc.vegas.brier), tips: r.weeks.map((w) => `Vegas ${f3(w.acc.vegas.brier)}`) },
-    ],
-  });
-  const weekTable = table(
-    ['Week', 'Picks', 'Model', 'Kalshi', 'Vegas'],
-    r.weeks.map((w) => [w.label, String(w.acc.mine.n), f3(w.acc.mine.brier), f3(w.acc.market.brier), f3(w.acc.vegas.brier)]),
-  );
+  const weekChart = lineChart({ label: 'Brier score by week, lower is better', xLabels, yFmt: (v) => v.toFixed(brierDigits), dots: 'all', series: weekSeries });
+  const weekLegend = legend(weekSeries.map((x) => ({ name: x.name, color: x.color, faint: x.faint })));
+  const weekTable = h
+    ? table(
+        ['Week', 'Games', ...h.models.map(short), 'Kalshi', 'Vegas'],
+        h.weeks.map((w) => [w.label, String(w.n), ...h.models.map((m) => f3(w.models[m] ?? null)), f3(w.kalshi), f3(w.vegas)]),
+      )
+    : table(
+        ['Week', 'Picks', 'Model', 'Kalshi', 'Vegas'],
+        r.weeks.map((w) => [w.label, String(w.acc.mine.n), f3(w.acc.mine.brier), f3(w.acc.market.brier), f3(w.acc.vegas.brier)]),
+      );
 
   const P2 = [
     { name: 'Taker (pay the ask + fee)', color: '--s1' },
@@ -286,8 +364,8 @@ export function renderResults(r: ResultsView): string {
 ${tiles}
 <section class="card">
   <div class="label">Accuracy by week</div>
-  <div class="small">Brier score, lower is better. The model is ahead when its line sits below the other two.</div>
-  ${legend(S3)}
+  <div class="small">Brier score, lower is better. A model is ahead when its line sits below Kalshi and Vegas. Each model's line starts the week it was added${h ? '; the bold lines are the three you read, Kalshi and Vegas cover every graded game' : ''}.</div>
+  ${weekLegend}
   ${weekChart}
   ${weekTable}
 </section>
@@ -307,8 +385,8 @@ ${tiles}
 }
 
 export const RESULTS_CSS = `
-:root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--grid:#e1e0d9;--axis:#c3c2b7;--tick:#898781}
-@media (prefers-color-scheme:dark){:root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--grid:#2c2c2a;--axis:#383835}}
+:root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#8b5cf6;--s5:#78716c;--s6:#c99a0e;--s7:#0e9fae;--s8:#d6409f;--s9:#9a6b3f;--s10:#5b6bd6;--grid:#e1e0d9;--axis:#c3c2b7;--tick:#898781}
+@media (prefers-color-scheme:dark){:root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#a78bfa;--s5:#a8a29e;--s6:#e0b43a;--s7:#2cc0cf;--s8:#ec6cbf;--s9:#c08b5c;--s10:#8b97ef;--grid:#2c2c2a;--axis:#383835}}
 h2.sec{font-size:17px;margin:28px 0 10px}h2.sec .small{font-weight:400;margin-left:6px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
@@ -316,6 +394,7 @@ h2.sec{font-size:17px;margin:28px 0 10px}h2.sec .small{font-weight:400;margin-le
 .tile.lead{border-color:var(--s1)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 4px;font-size:13px;color:var(--muted)}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.legend .faint{opacity:.7}
 svg.chart{width:100%;height:auto;display:block;margin-top:4px;overflow:visible}svg.calib{max-width:340px}
 .chart .grid{stroke:var(--grid);stroke-width:1}.chart .base{stroke:var(--axis);stroke-width:1}
 .chart .ref{stroke:var(--axis);stroke-width:1.5}

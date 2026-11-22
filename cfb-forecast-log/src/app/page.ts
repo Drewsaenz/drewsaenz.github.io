@@ -39,13 +39,13 @@ pre{background:var(--soft);border-radius:8px;padding:10px;font-size:12px;max-hei
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--line)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.tile .v{font-size:20px;font-weight:650}
-iframe{width:100%;height:80vh;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+iframe{display:block;width:100%;height:80vh;border:0;background:transparent}
 </style></head>
 <body>
 <header><div class="bar"><div class="brand">Forecast Desk</div>
 <nav><button data-tab="board" class="on">Board</button><button data-tab="games">Games</button><button data-tab="news">News</button><button data-tab="health">Health &amp; actions</button></nav></div></header>
 <main>
-<section id="tab-board"><iframe id="tracker" src="/tracker" title="Tracker page"></iframe></section>
+<section id="tab-board"><iframe id="tracker" src="/tracker" title="Tracker page" scrolling="no"></iframe></section>
 
 <section id="tab-games" hidden>
   <div class="grid">
@@ -150,6 +150,10 @@ btns.forEach(function(b){b.disabled=!r.done});
 if(!r.done){clearTimeout(poll);poll=setTimeout(function(){get('/api/run').then(showRun)},1000)}
 else{clearTimeout(poll);document.getElementById('tracker').src='/tracker'}}
 
+// The tracker is embedded at its full height so the page scrolls once (no frame inside the page).
+function fitTracker(){var f=document.getElementById('tracker');try{var d=f.contentDocument;if(!d||!d.documentElement)return;var h=d.documentElement.scrollHeight;if(h>0)f.style.height=h+'px'}catch(e){}}
+(function(){var f=document.getElementById('tracker');f.addEventListener('load',function(){fitTracker();try{var d=f.contentDocument;d.documentElement.style.overflow='hidden';if(window.ResizeObserver)new ResizeObserver(fitTracker).observe(d.body);d.addEventListener('click',function(){setTimeout(fitTracker,0)})}catch(e){}});})();
+document.querySelectorAll('[data-tab]').forEach(function(b){b.addEventListener('click',function(){setTimeout(fitTracker,0)})});
 var start0='board';try{start0=localStorage.getItem('desk-tab')||'board'}catch(e){}show(start0);
 </script>
 </body></html>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildResults, niceTicks, renderResults, type ResultRow } from '../src/results';
+import { buildHistory, buildResults, niceTicks, renderResults, type ResultRow } from '../src/results';
 import { hypotheticalPnl } from '../src/score';
 
 const cfg = { edge_min: 0.05, taker_fee_rate: 0.07, calibration_bins: 10, news_gap_min: 0.1 };
@@ -45,4 +45,23 @@ test('renderResults handles a week with no qualifying trades', () => {
   const html = renderResults(buildResults('v1-blend', [row({ my_prob: 0.5 })], cfg));
   assert.match(html, /No trades cleared the edge filter yet/);
   assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test('history: every model on one axis, markets from all games, later models start when added', () => {
+  const rows = [
+    row({ game_id: 1, week: 9, model_version: 'v1-blend', my_prob: 0.6, market_mid: 0.5 }),
+    row({ game_id: 2, week: 10, ticker: 'B', model_version: 'v1-blend', my_prob: 0.7, outcome: 0 }),
+    row({ game_id: 2, week: 10, ticker: 'B', model_version: 'v3-anchor', my_prob: 0.5, outcome: 0 }),
+  ];
+  const h = buildHistory(rows, ['v3-anchor', 'v1-blend']);
+  assert.deepEqual(h.weeks.map((w) => w.label), ['Wk 9', 'Wk 10']);
+  assert.equal(h.weeks[0].models['v3-anchor'], null);
+  assert.equal(h.weeks[1].models['v3-anchor'], 0.25);
+  assert.ok(Math.abs(h.weeks[0].models['v1-blend']! - 0.16) < 1e-12);
+  assert.equal(h.weeks[1].n, 1); // one game, two models
+  assert.equal(h.weeks[0].kalshi, 0.25);
+  const html = renderResults({ ...buildResults('v1-blend', rows.filter((r) => r.model_version === 'v1-blend'), cfg), history: { ...h, focus: ['v3-anchor'] } });
+  assert.match(html, /v3 \(from Wk 10\)/);
+  assert.match(html, /class="faint"><i[^>]*><\/i>v1/);
+  assert.match(html, /<th>v3<\/th><th>v1<\/th><th>Kalshi<\/th>/);
 });
