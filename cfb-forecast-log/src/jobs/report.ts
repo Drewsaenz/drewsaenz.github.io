@@ -12,6 +12,8 @@ import { log, runJob } from '../log';
 import { REPORTS_DIR } from '../paths';
 import { isoWeekLabel } from '../season';
 import { qbFlags } from '../news';
+import { ATS_BREAK_EVEN, loadModelM1Config, scoreSpreads } from '../model/m1';
+import type { Db } from '../db';
 import { calibration, compareAccuracy, edgeDecay, groupBy, hypotheticalPnl, newsCheck, onePerGame, type ScoreRow } from '../score';
 
 /** Short role label for a focus model's heading. */
@@ -147,6 +149,54 @@ export function buildReport(allRows: ScoreRow[], cfg = loadScoringConfig(), now 
   return out.join('\n');
 }
 
+export interface SpreadScoreRow {
+  model_version: string;
+  snapshot_kind: string;
+  home_margin: number;
+  vegas_spread: number | null;
+  actual: number;
+}
+
+/** Graded spread rows: finished games, scheduled snapshots taken before kickoff, game not voided for that snapshot kind. */
+export function gradedSpreadRows(db: Db): SpreadScoreRow[] {
+  return db
+    .prepare(
+      `SELECT s.model_version, s.snapshot_kind, s.home_margin, s.vegas_spread, g.home_points - g.away_points AS actual
+         FROM spread_forecasts s JOIN games g ON g.game_id = s.game_id
+        WHERE s.snapshot_kind <> 'manual' AND g.completed = 1 AND g.home_points IS NOT NULL AND g.away_points IS NOT NULL
+          AND s.snapshot_utc < g.kickoff_utc
+          AND NOT EXISTS (SELECT 1 FROM forecasts f JOIN forecast_voids v ON v.forecast_id = f.id
+                           WHERE f.game_id = s.game_id AND f.snapshot_kind = s.snapshot_kind)`,
+    )
+    .all() as SpreadScoreRow[];
+}
+
+/** Report section for the point-spread model(s); empty when nothing is graded yet. */
+export function buildSpreadSection(rows: SpreadScoreRow[], gap: number): string {
+  if (rows.length === 0) return '';
+  const f = (x: number) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a');
+  const out = [
+    '## Spread model',
+    '',
+    `Home-team margins. MAE = average miss in points vs the final margin (lower is better). Against the spread = games where the model is at least ${gap} points from Vegas, graded at the Vegas number; break-even at -110 is ${(ATS_BREAK_EVEN * 100).toFixed(1)}%.`,
+    '',
+    '| model | snapshot | N | model MAE | Vegas MAE | model RMSE | Vegas RMSE | ATS picks | record | cover % |',
+    '|---|---|---:|---:|---:|---:|---:|---:|---|---:|',
+  ];
+  const summary: string[] = [];
+  for (const [model, mr] of groupBy(rows, (r) => r.model_version)) {
+    for (const [kind, kr] of groupBy(mr, (r) => r.snapshot_kind)) {
+      const withLine = kr.filter((r) => r.vegas_spread !== null);
+      const s = scoreSpreads(withLine.map((r) => ({ model: r.home_margin, line: -r.vegas_spread!, actual: r.actual })), gap);
+      const rec = `${s.ats.won}-${s.ats.lost}${s.ats.push ? `-${s.ats.push}` : ''}`;
+      out.push(`| ${model} | ${kind} | ${s.n} | ${f(s.mae_model)} | ${f(s.mae_line)} | ${f(s.rmse_model)} | ${f(s.rmse_line)} | ${s.ats.picks} | ${rec} | ${s.ats.rate === null ? 'n/a' : (s.ats.rate * 100).toFixed(1)} |`);
+      if (s.n > 0) summary.push(`${model} ${kind}: misses by ${f(s.mae_model)} pts on average vs Vegas ${f(s.mae_line)}; against the spread ${rec}${s.ats.rate === null ? '' : ` (${(s.ats.rate * 100).toFixed(1)}%)`}.`);
+    }
+  }
+  out.push('', ...summary.map((x) => `- ${x}`), '');
+  return out.join('\n');
+}
+
 if (require.main === module) {
   runJob('report', async () => {
     loadEnv();
@@ -160,7 +210,7 @@ if (require.main === module) {
       )
       .all() as ScoreRow[];
     const now = new Date();
-    const md = buildReport(rows, loadScoringConfig(), now, qbFlags(db));
+    const md = buildReport(rows, loadScoringConfig(), now, qbFlags(db)) + '\n' + buildSpreadSection(gradedSpreadRows(db), loadModelM1Config().ats_min_gap);
     process.stdout.write(md);
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
     const file = path.join(REPORTS_DIR, `${isoWeekLabel(now)}.md`);

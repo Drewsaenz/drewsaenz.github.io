@@ -19,6 +19,7 @@ import { loadModelV4Config, nameMatcher, predictV4, type TeamAdjustment } from '
 import { adjustmentFor, describe, loadV4Inputs } from '../model/v4-inputs';
 import { loadModelV5Config, predictV5 } from '../model/v5';
 import { freshAdjustment } from '../model/v51';
+import { isM1Fitted, loadModelM1Config, predictM1 } from '../model/m1';
 import { weeksMissed } from '../model/v4';
 import { KalshiClient, mapMarketsToGames } from '../sources/kalshi';
 import { SNAPSHOT_KINDS, type ForecastInsert, type SnapshotKind } from '../types';
@@ -65,6 +66,11 @@ runJob(`snapshot:${kind}`, async () => {
   const v51 = v51cfg.fitted_at && v51cfg.coefs ? v51cfg : null;
   if (!v51) log.warn(`config/model-v5.1.json has no coefficients; no ${v51cfg.model_version} rows this snapshot.`);
   else if (v51.injury_model_version !== v41.model_version) throw new Error(`model-v5.1.json expects injury model ${v51.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
+  // m1: the point-spread model. Optional until `npm run m1:fit`, like v5.
+  const m1cfg = loadModelM1Config();
+  const m1 = isM1Fitted(m1cfg) ? m1cfg : null;
+  if (!m1) log.warn(`config/model-m1.json is not fitted yet; run \`npm run m1:fit\`. No ${m1cfg.model_version} spread rows this snapshot.`);
+  else if (m1.injury_model_version !== v41.model_version) throw new Error(`model-m1.json expects injury model ${m1.injury_model_version} but model-v4.1.json is ${v41.model_version}`);
   // v5.2: v5.1 with stricter name matching in the injury layer (config/model-v4.2.json, not logged on its own).
   const v42 = loadModelV4Config('model-v4.2.json');
   if (v42.base_model_version !== model.model_version) {
@@ -170,6 +176,7 @@ runJob(`snapshot:${kind}`, async () => {
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
+  const spreadRows: { game_id: number; snapshot_kind: SnapshotKind; snapshot_utc: string; model_version: string; home_margin: number; vegas_spread: number | null; ratings_margin: number; injury_term: number }[] = [];
   for (const m of selected) {
     const g = m.game;
     const yesIsHome = m.yes_team === g.home_team;
@@ -231,6 +238,22 @@ runJob(`snapshot:${kind}`, async () => {
       p52 = predictV5(v52, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: adjFor52(opponent, snapshot_utc).points - adjFor52(m.yes_team, snapshot_utc).points, hoursToKickoff: hours });
       rows.push({ ...v1Row, model_version: v52.model_version, my_prob: p52 });
     }
+    if (m1 && !spreadRows.some((r) => r.game_id === g.game_id)) {
+      const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
+      const pm = predictM1(m1, {
+        home_team: g.home_team,
+        away_team: g.away_team,
+        neutral: g.neutral_site === 1,
+        ratings,
+        vegasSpread: spread,
+        injuryPoints: adjFor51(g.away_team, snapshot_utc).points - adjFor51(g.home_team, snapshot_utc).points,
+        hoursToKickoff: hours,
+      });
+      if (pm) {
+        spreadRows.push({ game_id: g.game_id, snapshot_kind: kind, snapshot_utc, model_version: m1.model_version, home_margin: pm.home_margin, vegas_spread: spread, ratings_margin: pm.ratings_margin, injury_term: pm.injury_term });
+        log.info(`  m1 ${g.home_team} ${(-pm.home_margin).toFixed(1)} (Vegas ${spread === null ? 'n/a' : spread}; ratings ${(-pm.ratings_margin).toFixed(1)}, injury ${pm.injury_term.toFixed(1)})`);
+      }
+    }
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
@@ -252,12 +275,20 @@ runJob(`snapshot:${kind}`, async () => {
       (game_id, ticker, snapshot_kind, snapshot_utc, model_version, my_prob, yes_bid, yes_ask, market_mid, vegas_spread, vegas_prob)
     VALUES (@game_id, @ticker, @snapshot_kind, @snapshot_utc, @model_version, @my_prob, @yes_bid, @yes_ask, @market_mid, @vegas_spread, @vegas_prob)`);
 
+  const insertSpread = db.prepare(`
+    INSERT ${kind === 'manual' ? '' : 'OR IGNORE'} INTO spread_forecasts
+      (game_id, snapshot_kind, snapshot_utc, model_version, home_margin, vegas_spread, ratings_margin, injury_term)
+    VALUES (@game_id, @snapshot_kind, @snapshot_utc, @model_version, @home_margin, @vegas_spread, @ratings_margin, @injury_term)`);
+
   let inserted = 0;
+  let spreadInserted = 0;
   db.transaction(() => {
     upsertGames(db, games);
     upsertMarkets(db, selected.map((m) => ({ ticker: m.ticker, game_id: m.game.game_id, yes_team: m.yes_team, close_utc: m.close_utc })));
     saveStarters(db, season, starters.values()); // who starts, for the board's QB flags
     for (const r of rows) inserted += insert.run(r).changes;
+    for (const r of spreadRows) spreadInserted += insertSpread.run(r).changes;
   })();
+  if (m1) log.info(`spread forecasts: ${spreadInserted} inserted, ${spreadRows.length - spreadInserted} already present`);
   log.info(`forecasts: ${inserted} inserted, ${rows.length - inserted} already present (idempotent); CFBD calls this run: ${cfbd.callCount}`);
 });

@@ -1,0 +1,16 @@
+{
+  "model_version": "m1-margin",
+  "injury_model_version": "v4.1-avail",
+  "fitted_at": null,
+  "sources": null,
+  "temper": null,
+  "lambda": null,
+  "injury_scale": 1,
+  "fade": {
+    "full_hours": 72,
+    "zero_hours": 0
+  },
+  "min_sources": 2,
+  "ats_min_gap": 2,
+  "_note": "m1-margin = a point-spread model fit on final scoring margins (src/model/m1.ts): per-source least-squares lines on 2021-2025, tempered for the season-final-ratings leak, blended with the Vegas line by lambda (fit leak-free on prior-week Elo), plus v5.1's fresh injury points faded to 0 at kickoff. sources, temper and lambda are written by `npm run m1:fit`, which refuses once m1 rows exist. injury_scale 1 is a prior (injury points are already points). Approved by Drew 2026-11-22. Any change after rows are logged is a new model_version."
+}

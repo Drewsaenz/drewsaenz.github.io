@@ -266,6 +266,29 @@ Drew's call (`DEFAULT_FOCUS_MODELS` in `src/config.ts`, model pick in `src/board
 two differ for 2 of the teams playing: Washington (a bare "Davis" now counts for Elinneus Davis) and Mississippi
 State (Amaree Williams no longer merged with Ayden Williams).
 
+## Spread model m1 (`src/model/m1.ts`, `model_version = 'm1-margin'`, approved by Drew 2026-11-22)
+
+A point-spread model trained on final scoring margins (not a win probability turned into points). Rows go to
+`spread_forecasts` (append-only, home perspective, one per game per snapshot, unique per game/kind/model for
+non-manual kinds), logged by every snapshot once fitted; until then the snapshot warns and skips it.
+
+- `m1 = v + lambda * (r - v) + w(h) * k * injury`, home margin. `v` = -Vegas spread. `r` = mean over SP+, FPI, FEI,
+  Elo of a least-squares line `a + b * rating diff + c * home` per source, divided by `temper`. No line: `r + injury`.
+- `npm run m1:fit` (needs CFBD + FEI, so it runs on the Mac): lines on 2021-2025 (SP+/FPI/FEI season-final, Elo
+  prior-week), temper = Elo slope season-final / prior-week, lambda = least squares on (actual - line) vs
+  (ratings - line) with out-of-fold prior-week Elo as the ratings (leak-free, conservative, as in v3). Prints
+  leave-one-season-out MAE for line / Elo / blend and the against-the-spread record. Refuses once m1 rows exist.
+- injury = v5.1's fresh-news points (away lost minus home lost), `injury_scale` 1 (a prior: they are already
+  points), faded to 0 at kickoff like v5.
+- `npm run m1:check`: m1 on this season's finished games (out of sample; no injury term), MAE vs Vegas and vs
+  v5.1 turned into points, ATS record when |m1 - Vegas| >= `ats_min_gap` (2), plus this week's m1 vs Vegas.
+- The weekly report adds a "Spread model" section (MAE, RMSE, ATS record; break-even 52.4% at -110). Graded:
+  finished games, snapshot before kickoff, no void on that game and snapshot kind.
+- Board "Spread" column: m1's line for the backed team when it has a row, otherwise the main model's probability
+  as points (sd 13.5), with the Vegas spread and the gap. Forecast Desk Games tab: "Show spreads" toggle; m1 column.
+- `npm run kalshi:series`: read-only `GET /series?category=Sports` search for other college football series
+  (spreads, totals). Kalshi spread markets are not logged; adding them is a separate decision.
+
 ### Fact timing (`game_ref`, 2026-11-09)
 
 The extractor tags every fact with which game it is about: `upcoming`, `previous` (a recap of a game already

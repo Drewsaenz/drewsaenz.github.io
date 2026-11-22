@@ -7,6 +7,7 @@
 import type { ScoringConfig } from './config';
 import type { Db } from './db';
 import { qbFlags } from './news';
+import { probToMargin } from './projection';
 
 /** Bid/ask gap (cents) above which a maker fill at the bid is unlikely. */
 export const WIDE_SPREAD_CENTS = 5;
@@ -31,6 +32,11 @@ export interface BoardRow {
   model: number;
   kalshi: number;
   vegas: number | null;
+  /** Point spread for the backed team (negative = favored): the model's, from its probability, and Vegas's. */
+  model_line: number;
+  vegas_line: number | null;
+  /** The spread model's (m1-margin) line for this team when it has a row for the game, else null. */
+  m1_line: number | null;
   edge: number;
   bid: number | null;
   ask: number | null;
@@ -54,6 +60,7 @@ interface Raw {
   my_prob: number;
   market_mid: number | null;
   vegas_prob: number | null;
+  vegas_spread?: number | null;
   yes_bid: number | null;
   yes_ask: number | null;
   outcome: 0 | 1 | null;
@@ -63,6 +70,22 @@ interface Raw {
   kickoff_utc: string;
 }
 
+/** Spread sd used everywhere a probability becomes points (config/model-v1.json vegas_std_dev). */
+export const SPREAD_SD = 13.5;
+
+/** P(team wins) -> that team's point spread (negative = favored), to the nearest 0.5. */
+export function probToLine(p: number): number {
+  const line = Math.round(-probToMargin(p, SPREAD_SD) * 2) / 2;
+  return line === 0 ? 0 : line; // no -0
+}
+
+/** -3.5 -> "−3.5", 2 -> "+2", 0 -> "PK". */
+export function fmtLine(x: number | null): string {
+  if (x === null) return '—';
+  if (x === 0) return 'PK';
+  return `${x > 0 ? '+' : '−'}${Math.abs(x)}`;
+}
+
 export function tagFor(edge: number, model: number, vegas: number | null, bid: number | null, ask: number | null, cfg: ScoringConfig): BoardTag {
   if (edge < cfg.edge_min) return 'none';
   if (vegas !== null && Math.abs(model - vegas) >= cfg.news_gap_min) return 'news';
@@ -70,7 +93,7 @@ export function tagFor(edge: number, model: number, vegas: number | null, bid: n
   return 'edge';
 }
 
-export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: ScoringConfig): BoardRow[] {
+export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: ScoringConfig, m1Home: Map<number, number> = new Map()): BoardRow[] {
   // ticker -> { v1, v2, ... }
   const sides = new Map<string, { r: Raw; v1: number | null; v2: number | null; v4: number | null; v41: number | null; v5: number | null; v51: number | null }>();
   for (const r of raw) {
@@ -104,6 +127,9 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
       model,
       kalshi: r.market_mid,
       vegas: r.vegas_prob,
+      model_line: probToLine(model),
+      vegas_line: r.vegas_spread == null ? (r.vegas_prob === null ? null : probToLine(r.vegas_prob)) : r.yes_team === r.home_team ? r.vegas_spread : -r.vegas_spread,
+      m1_line: m1Home.has(r.game_id) ? Math.round((r.yes_team === r.home_team ? -m1Home.get(r.game_id)! : m1Home.get(r.game_id)!) * 2) / 2 || 0 : null,
       edge,
       bid: r.yes_bid,
       ask: r.yes_ask,
@@ -124,7 +150,7 @@ export function collectBoard(db: Db, cfg: ScoringConfig): BoardView | null {
   if (!latest) return null;
   const raw = db
     .prepare(
-      `SELECT f.game_id, f.ticker, f.model_version, f.my_prob, f.market_mid, f.vegas_prob, f.yes_bid, f.yes_ask, f.outcome,
+      `SELECT f.game_id, f.ticker, f.model_version, f.my_prob, f.market_mid, f.vegas_prob, f.vegas_spread, f.yes_bid, f.yes_ask, f.outcome,
               m.yes_team, g.home_team, g.away_team, g.kickoff_utc
          FROM forecasts f JOIN markets m ON m.ticker = f.ticker JOIN games g ON g.game_id = f.game_id
         WHERE f.snapshot_kind = ? AND f.snapshot_utc = ?
@@ -133,7 +159,15 @@ export function collectBoard(db: Db, cfg: ScoringConfig): BoardView | null {
             (SELECT MIN(g3.week) FROM forecasts f3 JOIN games g3 ON g3.game_id = f3.game_id WHERE f3.snapshot_utc = ?))`,
     )
     .all(latest.kind, latest.snapshot_utc, latest.snapshot_utc) as Raw[];
-  return { ...latest, rows: buildBoard(raw, qbFlags(db), cfg), edge_min: cfg.edge_min, news_gap_min: cfg.news_gap_min };
+  // The spread model's latest row per game at or before this snapshot (m1-margin; none until it is fitted).
+  const m1 = db
+    .prepare(
+      `SELECT s.game_id, s.home_margin FROM spread_forecasts s
+        WHERE s.snapshot_utc <= ? AND s.id = (SELECT MAX(s2.id) FROM spread_forecasts s2 WHERE s2.game_id = s.game_id AND s2.model_version = s.model_version AND s2.snapshot_utc <= ?)`,
+    )
+    .all(latest.snapshot_utc, latest.snapshot_utc) as { game_id: number; home_margin: number }[];
+  const m1Home = new Map(m1.map((r) => [r.game_id, r.home_margin]));
+  return { ...latest, rows: buildBoard(raw, qbFlags(db), cfg, m1Home), edge_min: cfg.edge_min, news_gap_min: cfg.news_gap_min };
 }
 
 // ------------------------------------------------------------ render
@@ -147,6 +181,13 @@ const TAG: Record<BoardTag, { label: string; title: string }> = {
   news: { label: 'Check news', title: 'Model is far from Vegas too. Usually the model is missing news, not finding value' },
   none: { label: '', title: '' },
 };
+
+function spreadCell(r: BoardRow): string {
+  const main = r.m1_line ?? r.model_line;
+  const who = r.m1_line === null ? '' : `<div class="sub" title="m1-margin, the spread model trained on final scores">m1</div>`;
+  const vegas = r.vegas_line === null ? 'no line' : `Vegas ${fmtLine(r.vegas_line)}${Math.abs(main - r.vegas_line) >= 0.5 ? ` · ${Math.abs(main - r.vegas_line)} ${main < r.vegas_line ? 'more' : 'less'}` : ''}`;
+  return `${fmtLine(main)}${who}<div class="sub" title="Vegas spread for this team; the gap is model minus Vegas in points">${vegas}</div>`;
+}
 
 export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): string {
   const hasV2 = b.rows.some((r) => r.v2 !== null);
@@ -172,6 +213,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   <td class="num">${p2(r.model)}${v1note}</td>
   <td class="num">${p2(r.kalshi)}<div class="sub">${r.bid ?? '—'}¢ / ${r.ask ?? '—'}¢</div></td>
   <td class="num">${p2(r.vegas)}${gap === '' ? '' : `<div class="sub">${Math.round(Math.abs(gap) * 100) === 0 ? 'same as Kalshi' : `Kalshi ${Math.round(Math.abs(gap) * 100)} ${gap > 0 ? 'higher' : 'lower'}`}</div>`}</td>
+  <td class="num">${spreadCell(r)}</td>
   <td>${tag}</td>
 </tr>`;
     })
@@ -179,7 +221,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   return `
 <h2 class="sec">This week's board <span class="small">${esc(source)}</span></h2>
 <section class="card board">
-  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV51 ? ' Model is v5.1: the Vegas line blended with the v1 ratings and only the injury news since each team\'s last game, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV5 ? ' Model is v5: the Vegas line blended with the v1 ratings and the injury report, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV41 ? ' Model is v4.1: the v1 ratings adjusted for injuries and coaching changes, using the official availability report where one exists and only news two outlets agree on. Where that changed the number, v1 shows underneath.' : hasV4 ? ' Model is v4: the v1 ratings adjusted for each team\'s injuries and coaching changes. Where that changed the number, v1 shows underneath.' : hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} Hypothetical only.</div>
+  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV51 ? ' Model is v5.1: the Vegas line blended with the v1 ratings and only the injury news since each team\'s last game, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV5 ? ' Model is v5: the Vegas line blended with the v1 ratings and the injury report, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV41 ? ' Model is v4.1: the v1 ratings adjusted for injuries and coaching changes, using the official availability report where one exists and only news two outlets agree on. Where that changed the number, v1 shows underneath.' : hasV4 ? ' Model is v4: the v1 ratings adjusted for each team\'s injuries and coaching changes. Where that changed the number, v1 shows underneath.' : hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} <b>Spread</b> is the spread model (m1, trained on final scores) when it has a number for the game, otherwise the model's probability turned into points, for the backed team,, next to the Vegas spread (\"2 more\" = the model makes the team 2 points better than Vegas does). Hypothetical only.</div>
   <div class="chips" role="group" aria-label="Filter games">
     <button type="button" class="chip on" data-f="edge">Edge (${counts.edge})</button>
     <button type="button" class="chip" data-f="flagged">Edge + flagged (${counts.edge + counts.wide + counts.news})</button>
@@ -187,7 +229,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
     <button type="button" class="chip" data-f="all">All games (${b.rows.length})</button>
   </div>
   <div class="scroll"><table class="bt">
-    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">${modelLabel}</th><th class="num">Kalshi</th><th class="num">Vegas</th><th></th></tr></thead>
+    <thead><tr><th>Back</th><th class="num">Edge</th><th class="num">${modelLabel}</th><th class="num">Kalshi</th><th class="num">Vegas</th><th class="num" title="The model's win probability as a point spread for the backed team (sd 13.5), under it the Vegas spread">Spread</th><th></th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>
   <p class="small empty" hidden>No games pass the filter.</p>

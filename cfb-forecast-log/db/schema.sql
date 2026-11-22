@@ -155,3 +155,30 @@ CREATE TABLE IF NOT EXISTS qb_starters (
   updated_at  TEXT NOT NULL,
   PRIMARY KEY (season, team)
 );
+
+-- Point-spread forecasts (model m1-margin), one row per game per snapshot, home perspective.
+-- Scored against the final margin in the games table; append-only like forecasts.
+CREATE TABLE IF NOT EXISTS spread_forecasts (
+  id              INTEGER PRIMARY KEY,
+  game_id         INTEGER NOT NULL REFERENCES games(game_id),
+  snapshot_kind   TEXT NOT NULL,
+  snapshot_utc    TEXT NOT NULL,
+  model_version   TEXT NOT NULL,
+  home_margin     REAL NOT NULL,      -- predicted home points minus away points
+  vegas_spread    REAL,               -- home-perspective spread at the snapshot (negative = home favored)
+  ratings_margin  REAL,               -- ratings-only home margin (tempered), for diagnosis
+  injury_term     REAL                -- injury points actually applied (after the fade)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_spread_forecasts_snapshot
+  ON spread_forecasts(game_id, snapshot_kind, model_version)
+  WHERE snapshot_kind <> 'manual';
+CREATE TRIGGER IF NOT EXISTS trg_spread_forecasts_no_delete
+  BEFORE DELETE ON spread_forecasts
+BEGIN
+  SELECT RAISE(ABORT, 'spread_forecasts is append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_spread_forecasts_no_update
+  BEFORE UPDATE ON spread_forecasts
+BEGIN
+  SELECT RAISE(ABORT, 'spread_forecasts is append-only');
+END;

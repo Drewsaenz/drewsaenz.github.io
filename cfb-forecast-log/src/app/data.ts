@@ -51,6 +51,8 @@ export interface SnapshotRow {
   home_prob: number;
   kalshi: number | null;
   vegas: number | null;
+  /** Home-perspective Vegas spread (negative = home favored). */
+  vegas_spread: number | null;
   outcome: 0 | 1 | null;
 }
 
@@ -69,6 +71,8 @@ export interface FactRow {
 export interface GameDetail {
   game: GameSummary;
   snapshots: SnapshotRow[];
+  /** Spread model rows (home margin), one per snapshot. */
+  spreads: { snapshot_kind: string; snapshot_utc: string; model_version: string; home_margin: number }[];
   facts: FactRow[];
 }
 
@@ -85,7 +89,7 @@ export function gameDetail(db: Db, gameId: number): GameDetail | null {
   const game: GameSummary = { ...g, completed: g.completed === 1, sec: SEC_TEAMS.has(g.home) || SEC_TEAMS.has(g.away) };
   const snapshots = db
     .prepare(
-      `SELECT f.snapshot_kind, f.snapshot_utc, f.model_version, f.my_prob AS home_prob, f.market_mid AS kalshi, f.vegas_prob AS vegas, f.outcome
+      `SELECT f.snapshot_kind, f.snapshot_utc, f.model_version, f.my_prob AS home_prob, f.market_mid AS kalshi, f.vegas_prob AS vegas, f.vegas_spread, f.outcome
          FROM forecasts f JOIN markets m ON m.ticker = f.ticker
         WHERE f.game_id = ? AND m.yes_team = ?
         ORDER BY f.snapshot_utc, f.model_version`,
@@ -100,7 +104,10 @@ export function gameDetail(db: Db, gameId: number): GameDetail | null {
         ORDER BY team, as_of DESC`,
     )
     .all(game.home, game.away, game.kickoff_utc, game.kickoff_utc) as (Omit<FactRow, 'official'> & { official: number })[];
-  return { game, snapshots, facts: facts.map((f) => ({ ...f, official: f.official === 1 })) };
+  const spreads = db
+    .prepare(`SELECT snapshot_kind, snapshot_utc, model_version, home_margin FROM spread_forecasts WHERE game_id = ? ORDER BY snapshot_utc`)
+    .all(gameId) as GameDetail['spreads'];
+  return { game, snapshots, spreads, facts: facts.map((f) => ({ ...f, official: f.official === 1 })) };
 }
 
 /** Availability facts for the last `days` days, newest first, optionally one team or SEC only; recaps excluded. */

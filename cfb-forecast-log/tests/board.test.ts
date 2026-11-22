@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildBoard, collectBoard, renderBoard, tagFor } from '../src/board';
+import { buildBoard, collectBoard, fmtLine, probToLine, renderBoard, tagFor } from '../src/board';
 import type { ScoringConfig } from '../src/config';
 import { openDb, upsertGames, upsertMarkets } from '../src/db';
 import { game } from './helpers';
@@ -76,4 +76,27 @@ test('SEC filter: games with an SEC team get data-sec and a chip with their coun
   const html = renderBoard({ kind: 'tuesday', snapshot_utc: '2026-11-24T13:00:00Z', rows: [row('Texas', 'Texas A&M'), row('UCLA', 'USC')] as never, edge_min: 0.05, news_gap_min: 0.1 }, (x) => x);
   assert.match(html, /data-f="sec">SEC \(1\)/);
   assert.equal((html.match(/data-sec="1"/g) ?? []).length, 1);
+});
+
+test('spread column: probability to a point spread, and the Vegas spread from the backed team side', () => {
+  assert.equal(probToLine(0.5), 0);
+  assert.equal(probToLine(0.75), -9); // 13.5 * 0.674 = 9.1
+  assert.equal(probToLine(0.25), 9);
+  assert.equal(fmtLine(-3.5), '−3.5');
+  assert.equal(fmtLine(2), '+2');
+  assert.equal(fmtLine(0), 'PK');
+  const base = { game_id: 1, model_version: 'v1-blend', yes_bid: 40, yes_ask: 41, market_mid: 0.405, outcome: null, home_team: 'LSU', away_team: 'Texas', kickoff_utc: '2026-11-14T00:00:00Z' };
+  const rows = buildBoard(
+    [
+      { ...base, ticker: 'TEX', yes_team: 'Texas', my_prob: 0.6, vegas_prob: 0.41, vegas_spread: -3.5 }, // LSU -3.5 at home
+      { ...base, ticker: 'LSU', yes_team: 'LSU', my_prob: 0.4, vegas_prob: 0.59, vegas_spread: -3.5, market_mid: 0.595 },
+    ],
+    new Map(),
+    cfg,
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].team, 'Texas');
+  assert.equal(rows[0].vegas_line, 3.5); // home spread flipped to Texas's side
+  assert.equal(rows[0].model_line, -3.5);
+  assert.match(renderBoard({ kind: 'tuesday', snapshot_utc: 'x', rows, edge_min: 0.05, news_gap_min: 0.1 }, (s) => s), /Vegas \+3\.5 · 7 more/);
 });

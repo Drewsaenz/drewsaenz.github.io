@@ -88,7 +88,7 @@ if(name==='games')loadGames();if(name==='news')loadNews();if(name==='health')loa
 tabs.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.tab)})});
 
 // games
-var games=[],sel=null,flip=false;
+var games=[],sel=null,flip=false,asLine=false;
 function loadGames(){get('/api/games').then(function(d){games=d.games||[];document.getElementById('wk').textContent=d.week?'Week '+d.week+' games':'Games';renderList()})}
 function renderList(){var sec=document.getElementById('gsec').checked,q=document.getElementById('gq').value.toLowerCase();
 var html=games.filter(function(g){return(!sec||g.sec)&&(!q||(g.home+' '+g.away).toLowerCase().indexOf(q)>=0)}).map(function(g){
@@ -99,20 +99,26 @@ el.querySelectorAll('.game').forEach(function(b){b.addEventListener('click',func
 document.getElementById('gsec').addEventListener('change',renderList);document.getElementById('gq').addEventListener('input',renderList);
 var ORDER=['v5.1-fused','v3-anchor','v1-blend','v5.2-fused','v5-fused','v4.1-avail','v4-avail','v2-qb'],MAIN={'v5.1-fused':1};
 function loadGame(){get('/api/game?id='+sel).then(renderGame)}
-function renderGame(d){var g=d.game,side=flip?g.away:g.home,f=function(p){return p==null?null:(flip?1-p:p)};
+function ncdf(x){var t=1/(1+0.3275911*Math.abs(x)/Math.SQRT2),y=1-((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x/2);return x<0?(1-y)/2:(1+y)/2}
+function nq(p){p=Math.min(0.999,Math.max(0.001,p));var lo=-6,hi=6;for(var i=0;i<60;i++){var m=(lo+hi)/2;if(ncdf(m)<p)lo=m;else hi=m}return (lo+hi)/2}
+function fl(x){if(x==null)return '—';x=Math.round(x*2)/2;return x===0?'PK':(x>0?'+':'−')+Math.abs(x)}
+function line(p){return p==null?null:-13.5*nq(p)}
+function renderGame(d){var g=d.game,side=flip?g.away:g.home,f=function(p){return p==null?null:(flip?1-p:p)};var cell=function(p){return asLine?fl(line(f(p))):pct(f(p))},vline=function(s){return s.vegas_spread!=null?fl(flip?-s.vegas_spread:s.vegas_spread):cell(s.vegas)};
 var models=ORDER.filter(function(m){return d.snapshots.some(function(s){return s.model_version===m})});
 d.snapshots.forEach(function(s){if(models.indexOf(s.model_version)<0)models.push(s.model_version)});
-var snaps={};d.snapshots.forEach(function(s){var k=s.snapshot_kind+'|'+s.snapshot_utc;(snaps[k]=snaps[k]||{kind:s.snapshot_kind,at:s.snapshot_utc,m:{},kalshi:s.kalshi,vegas:s.vegas}).m[s.model_version]=s.home_prob});
+var snaps={};d.snapshots.forEach(function(s){var k=s.snapshot_kind+'|'+s.snapshot_utc;(snaps[k]=snaps[k]||{kind:s.snapshot_kind,at:s.snapshot_utc,m:{},kalshi:s.kalshi,vegas:s.vegas,vegas_spread:s.vegas_spread}).m[s.model_version]=s.home_prob});
+(d.spreads||[]).forEach(function(s){var k=s.snapshot_kind+'|'+s.snapshot_utc;(snaps[k]=snaps[k]||{kind:s.snapshot_kind,at:s.snapshot_utc,m:{},kalshi:null,vegas:null,vegas_spread:null}).m1=s.home_margin});
+var hasM1=(d.spreads||[]).length>0,m1cell=function(s){if(s.m1==null)return '—';var x=flip?s.m1:-s.m1;return asLine?fl(x):pct(ncdf(-x/13.5))};
 var keys=Object.keys(snaps).sort(function(a,b){return snaps[a].at<snaps[b].at?-1:1});
-var head='<tr><th>Snapshot</th>'+models.map(function(m){return '<th class="n'+(MAIN[m]?' main':'')+'">'+esc(m.replace('-fused','').replace('-anchor','').replace('-blend','').replace('-avail','').replace('-qb',''))+'</th>'}).join('')+'<th class="n">Kalshi</th><th class="n">Vegas</th></tr>';
-var body=keys.map(function(k){var s=snaps[k];return '<tr><td>'+esc(s.kind)+'<div class="small">'+t(s.at)+'</div></td>'+models.map(function(m){return '<td class="n'+(MAIN[m]?' main':'')+'">'+pct(f(s.m[m]))+'</td>'}).join('')+'<td class="n">'+pct(f(s.kalshi))+'</td><td class="n">'+pct(f(s.vegas))+'</td></tr>'}).join('');
+var head='<tr><th>Snapshot</th>'+models.map(function(m){return '<th class="n'+(MAIN[m]?' main':'')+'">'+esc(m.replace('-fused','').replace('-anchor','').replace('-blend','').replace('-avail','').replace('-qb',''))+'</th>'}).join('')+(hasM1?'<th class="n main" title="m1-margin: spread model trained on final scores">m1</th>':'')+'<th class="n">Kalshi</th><th class="n">Vegas</th></tr>';
+var body=keys.map(function(k){var s=snaps[k];return '<tr><td>'+esc(s.kind)+'<div class="small">'+t(s.at)+'</div></td>'+models.map(function(m){return '<td class="n'+(MAIN[m]?' main':'')+'">'+cell(s.m[m])+'</td>'}).join('')+(hasM1?'<td class="n main">'+m1cell(s)+'</td>':'')+'<td class="n">'+cell(s.kalshi)+'</td><td class="n">'+(asLine?vline(s):pct(f(s.vegas)))+'</td></tr>'}).join('');
 var result=g.completed&&g.home_points!=null?'<span class="pill">Final: '+esc(g.away)+' '+g.away_points+', '+esc(g.home)+' '+g.home_points+'</span>':'';
 var facts=[g.away,g.home].map(function(team){var fs=d.facts.filter(function(x){return x.team===team});
 return '<div class="team">'+esc(team)+'</div>'+(fs.length?'<div class="scroll"><table>'+fs.slice(0,25).map(factRow).join('')+'</table></div>':'<div class="empty">No availability news in the 10 days before kickoff.</div>')}).join('');
 document.getElementById('gdetail').innerHTML='<h2>'+esc(g.away)+' at '+esc(g.home)+(g.sec?'<span class="pill sec">SEC</span>':'')+'</h2><div class="small">'+t(g.kickoff_utc,{weekday:'long',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' '+result+'</div>'+
-'<div class="row" style="margin:12px 0 6px"><span class="small">Chance that <b>'+esc(side)+'</b> wins, at each snapshot. Main model is v5.1.</span><button class="btn" id="flip">Show '+esc(flip?g.home:g.away)+'</button></div>'+
+'<div class="row" style="margin:12px 0 6px"><span class="small">'+(asLine?'Point spread for <b>'+esc(side)+'</b> (negative = favored) at each snapshot. Model and Kalshi columns are their win chances turned into points (sd 13.5); Vegas is the posted spread.':'Chance that <b>'+esc(side)+'</b> wins, at each snapshot.')+' Main model is v5.1.</span><span><button class="btn" id="asline">'+(asLine?'Show win %':'Show spreads')+'</button> <button class="btn" id="flip">Show '+esc(flip?g.home:g.away)+'</button></span></div>'+
 (keys.length?'<div class="scroll"><table>'+head+body+'</table></div>':'<div class="empty">No forecasts logged for this game yet.</div>')+'<h2 style="margin-top:18px">Availability news</h2>'+facts;
-document.getElementById('flip').addEventListener('click',function(){flip=!flip;renderGame(d)})}
+document.getElementById('flip').addEventListener('click',function(){flip=!flip;renderGame(d)});document.getElementById('asline').addEventListener('click',function(){asLine=!asLine;renderGame(d)})}
 function factRow(x){var st=x.status==='out'?'bad':(x.status==='doubtful'||x.status==='questionable'||x.status==='limited')?'warn':'';
 return '<tr><td style="white-space:nowrap">'+esc(x.player||'(group)')+'<div class="small">'+esc(x.position||'')+'</div></td><td><span class="pill '+st+'">'+esc(x.status)+'</span>'+(x.official?'<span class="pill off">Official</span>':'')+'</td><td>'+esc(x.detail||'')+'<div class="small">'+esc(x.source||'')+' · '+t(x.as_of)+'</div></td></tr>'}
 
