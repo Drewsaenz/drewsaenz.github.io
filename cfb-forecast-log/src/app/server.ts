@@ -61,6 +61,21 @@ function runAction(name: string): void {
   next(0);
 }
 
+/**
+ * A POST may start an action only from this app's own page: the Origin's host
+ * must match the Host the request was sent to (localhost, or the Mac's
+ * Tailscale name when proxied by `tailscale serve`). Blocks other sites.
+ */
+export function sameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true; // not a browser cross-site request (curl, same-origin GET-like)
+  if (!host) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 function check(cmd: string, args: string[]): Promise<string | null> {
   return new Promise((resolve) => execFile(cmd, args, { timeout: 3000 }, (err, stdout) => resolve(err ? null : stdout)));
 }
@@ -78,8 +93,7 @@ export function createServer(): http.Server {
       const url = new URL(req.url ?? '/', 'http://localhost');
       // Only same-origin browser requests may start an action (blocks other web pages from posting here).
       if (req.method === 'POST') {
-        const origin = req.headers.origin;
-        if (origin && origin !== `http://localhost:${PORT}` && origin !== `http://127.0.0.1:${PORT}`) return json(res, { error: 'cross-origin request refused' }, 403);
+        if (!sameOrigin(req.headers.origin, req.headers.host)) return json(res, { error: 'cross-origin request refused' }, 403);
       }
       if (req.method === 'GET' && url.pathname === '/') return send(res, 200, APP_HTML, 'text/html');
       if (req.method === 'GET' && url.pathname === '/tracker') {

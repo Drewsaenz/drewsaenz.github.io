@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { openDb, upsertGames, upsertMarkets } from '../src/db';
 import { currentBoardWeek, gameDetail, gamesForWeek, health, recentNews } from '../src/app/data';
-import { ACTIONS } from '../src/app/server';
+import { ACTIONS, sameOrigin } from '../src/app/server';
 import { game } from './helpers';
 
 function seed() {
@@ -56,4 +56,11 @@ test('the app can only run fixed npm/git commands, none of them touching orders'
       assert.ok(!args.join(' ').match(/order|trade|kalshi/i));
     }
   }
+});
+
+test('actions accept only POSTs from the page\'s own host', () => {
+  assert.ok(sameOrigin('http://localhost:3300', 'localhost:3300'));
+  assert.ok(sameOrigin('https://drews-mac.tail1234.ts.net', 'drews-mac.tail1234.ts.net'));
+  assert.ok(!sameOrigin('https://evil.example', 'localhost:3300'));
+  assert.ok(!sameOrigin('http://localhost:3300', undefined));
 });

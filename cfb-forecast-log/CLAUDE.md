@@ -323,6 +323,8 @@ game's availability news), News (facts by team, recaps hidden, SEC filter), Heal
 data/jobs.log, caffeinate and cron checks, counts). Its only actions are the fixed npm/git commands in `ACTIONS`
 (preview = ratings + snapshot:manual + tracker; grade = resolve + tracker; tracker; git pull --ff-only), one at
 a time, POSTs from other origins refused. It writes nothing itself and has no order or Kalshi-auth code.
+Phone access: Tailscale on the Mac and phone, then `tailscale serve --bg 3300` publishes it inside the tailnet
+only (HTTPS at the Mac's tailnet name); the app itself stays bound to 127.0.0.1. Cron `@reboot` starts it at login.
 
 ### `power` (on demand)
 
