@@ -286,8 +286,13 @@ non-manual kinds), logged by every snapshot once fitted; until then the snapshot
   finished games, snapshot before kickoff, no void on that game and snapshot kind.
 - Board "Spread" column: m1's line for the backed team when it has a row, otherwise the main model's probability
   as points (sd 13.5), with the Vegas spread and the gap. Forecast Desk Games tab: "Show spreads" toggle; m1 column.
-- `npm run kalshi:series`: read-only `GET /series?category=Sports` search for other college football series
-  (spreads, totals). Kalshi spread markets are not logged; adding them is a separate decision.
+- `npm run kalshi:series`: read-only `GET /series?category=Sports` search; samples open markets only for spread/total
+  series, one request a second (the first version sampled all ~150 series and hit 429s). Kalshi spread markets are
+  not logged; adding them is a separate decision.
+- First fit (2026-11-22, 3,461 games): temper 1.031, lambda 0.047. Leave-one-season-out MAE: line 12.13, prior-week
+  Elo 12.92, blend 12.14; m1 never moved 2 points off the line. m1:check on 2026: Tuesday MAE m1 12.56 vs Vegas 12.54
+  (246 games). In practice m1 is the Vegas line. Kalshi lists full-game spreads as `KXNCAAFSPREAD` ("X wins by over
+  N.5", several strikes per game), plus `KXNCAAFTOTAL`, `KXNCAAFWINMARGIN`, and half/quarter spreads.
 
 ### Fact timing (`game_ref`, 2026-11-09)
 

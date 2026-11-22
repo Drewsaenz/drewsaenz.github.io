@@ -56,11 +56,17 @@ export class KalshiClient {
    * with a few open markets each. Public GET endpoints, no auth (used by
    * `npm run kalshi:series` to look for college football spread markets).
    */
-  async findSeries(pattern: RegExp, category = 'Sports'): Promise<{ ticker: string; title: string; sample: { ticker: string; title: string }[] }[]> {
+  async findSeries(pattern: RegExp, sampleIf: RegExp, category = 'Sports'): Promise<{ ticker: string; title: string; sample: { ticker: string; title: string }[] | null }[]> {
     const raw = (await this.get('/series', { category })) as { series?: { ticker: string; title: string }[] | null };
     const hits = (raw.series ?? []).filter((x) => pattern.test(x.title) || pattern.test(x.ticker));
-    const out: { ticker: string; title: string; sample: { ticker: string; title: string }[] }[] = [];
+    const out: { ticker: string; title: string; sample: { ticker: string; title: string }[] | null }[] = [];
     for (const sr of hits) {
+      // Only fetch sample markets for the series asked about, one request per second (public rate limit).
+      if (!sampleIf.test(sr.ticker) && !sampleIf.test(sr.title)) {
+        out.push({ ticker: sr.ticker, title: sr.title, sample: null });
+        continue;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
       const m = (await this.get('/markets', { series_ticker: sr.ticker, status: 'open', limit: 5 })) as { markets?: { ticker: string; title?: string; subtitle?: string; yes_sub_title?: string }[] };
       out.push({ ticker: sr.ticker, title: sr.title, sample: (m.markets ?? []).map((x) => ({ ticker: x.ticker, title: [x.title, x.yes_sub_title ?? x.subtitle].filter(Boolean).join(' | ') })) });
     }

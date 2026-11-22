@@ -212,13 +212,16 @@ if (cmd === 'fit') {
 } else if (cmd === 'series') {
   runJob('kalshi:series', async () => {
     const k = new KalshiClient();
-    const found = await k.findSeries(/college football|ncaaf|ncaa football|cfb/i);
+    const found = await k.findSeries(/college football|ncaaf|ncaa football|cfb/i, /spread|total/i);
     if (found.length === 0) console.log('No Sports series matched college football.');
-    for (const s of found) {
-      console.log(`\n${s.ticker}  "${s.title}"${s.ticker === k.cfg.series_ticker ? '  (game winner: already logged)' : ''}`);
-      if (s.sample.length === 0) console.log('  no open markets right now');
-      for (const m of s.sample) console.log(`  ${m.ticker}  ${m.title}`);
+    const sampled = found.filter((s) => s.sample !== null);
+    const rest = found.filter((s) => s.sample === null);
+    for (const s of sampled) {
+      console.log(`\n${s.ticker}  "${s.title}"`);
+      if (s.sample!.length === 0) console.log('  no open markets right now');
+      for (const m of s.sample!) console.log(`  ${m.ticker}  ${m.title}`);
     }
+    console.log(`\nOther college football series (${rest.length}): ${rest.map((s) => s.ticker).join(', ')}`);
   });
 } else {
   console.error('usage: tsx scripts/m1.ts <fit|check|series>');
