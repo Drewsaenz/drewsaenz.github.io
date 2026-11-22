@@ -161,8 +161,8 @@ const pct = (x: number | null) => (x === null ? 'n/a' : `${(x * 100).toFixed(1)}
 interface Series {
   name: string;
   color: string; // CSS var
-  /** Drawn thinner and lighter (models not in the focus list). */
-  faint?: boolean;
+  /** Line weight: 'strong' for the markets, 'faint' for older models; default in between. */
+  weight?: 'strong' | 'normal' | 'faint';
   values: (number | null)[];
   tips: string[];
 }
@@ -221,10 +221,10 @@ function lineChart(opts: { series: Series[]; xLabels: string[]; xTickEvery?: num
         else if (cur.length) (segs.push(cur.join(' ')), (cur = []));
       }
       if (cur.length) segs.push(cur.join(' '));
-      const lines = segs.filter((sg) => sg.includes(' ')).map((sg) => `<polyline points="${sg}" fill="none" stroke="var(${s.color})" stroke-width="${s.faint ? 1.5 : 2.5}"${s.faint ? ' stroke-opacity="0.6"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+      const lines = segs.filter((sg) => sg.includes(' ')).map((sg) => `<polyline points="${sg}" fill="none" stroke="var(${s.color})" stroke-width="${s.weight === 'strong' ? 4 : s.weight === 'faint' ? 1.25 : 2}"${s.weight === 'faint' ? ' stroke-opacity="0.4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`).join('');
       const lastIdx = pts.map((p, i) => (p ? i : -1)).filter((i) => i >= 0).pop();
       const dots = pts
-        .map((p, i) => (p && (opts.dots === 'all' || i === lastIdx) ? `<circle cx="${p[0]}" cy="${p[1]}" r="${s.faint ? 3 : 4}" fill="var(${s.color})"${s.faint ? ' fill-opacity="0.7"' : ''} class="ring"/>` : ''))
+        .map((p, i) => (p && (opts.dots === 'all' || i === lastIdx) ? `<circle cx="${p[0]}" cy="${p[1]}" r="${s.weight === 'strong' ? 5 : s.weight === 'faint' ? 2.5 : 3.5}" fill="var(${s.color})"${s.weight === 'faint' ? ' fill-opacity="0.5"' : ''} class="ring"/>` : ''))
         .join('');
       return lines + dots;
     })
@@ -266,8 +266,8 @@ function calibrationChart(bins: CalibrationBin[]): string {
   return `<svg viewBox="0 0 ${S} ${S}" role="img" aria-label="Calibration: forecast vs actual win rate" class="chart calib">${grid}${diag}${dots}<text x="${x(0.5)}" y="${S - 2}" class="tick" text-anchor="middle">Model's forecast</text><text transform="translate(10 ${y(0.5)}) rotate(-90)" class="tick" text-anchor="middle">Actually won</text></svg>`;
 }
 
-const legend = (items: { name: string; color: string; faint?: boolean }[]) =>
-  `<div class="legend">${items.map((i) => `<span${i.faint ? ' class="faint"' : ''}><i style="background:var(${i.color})"></i>${esc(i.name)}</span>`).join('')}</div>`;
+const legend = (items: { name: string; color: string; weight?: Series['weight'] }[]) =>
+  `<div class="legend">${items.map((i) => `<span${i.weight ? ` class="${i.weight}"` : ''}><i style="background:var(${i.color})"></i>${esc(i.name)}</span>`).join('')}</div>`;
 
 const table = (head: string[], body: string[][]) =>
   `<details><summary>Show table</summary><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body
@@ -298,29 +298,41 @@ export function renderResults(r: ResultsView): string {
   const MODEL_COLORS = ['--s1', '--s4', '--s5', '--s6', '--s7', '--s8', '--s9', '--s10'];
   const short = (m: string) => m.replace(/-(fused|anchor|blend|avail|qb)$/, '');
   const h = r.history && r.history.weeks.length > 0 ? r.history : null;
-  const weekSeries: Series[] = h
-    ? [
-        ...h.models.map((m, i) => ({
+  // Kalshi and Vegas are the benchmarks, so they are the boldest; v5 and later are the current models; older ones fade back.
+  const isCurrent = (m: string) => /^v(\d+(\.\d+)?)/.test(m) && Number(m.match(/^v(\d+)/)![1]) >= 5;
+  const modelSeries: Series[] = h
+    ? h.models
+        .map((m, i) => ({
           name: `${short(m)}${(() => { const k = h.weeks.findIndex((w) => w.models[m] != null); return k > 0 ? ` (from ${h.weeks[k].label})` : ''; })()}`,
-          faint: h.focus ? !h.focus.includes(m) : false,
+          weight: (isCurrent(m) ? 'normal' : 'faint') as Series['weight'],
           color: MODEL_COLORS[i % MODEL_COLORS.length],
           values: h.weeks.map((w) => w.models[m] ?? null),
           tips: h.weeks.map((w) => (w.models[m] == null ? '' : `${short(m)} ${f3(w.models[m]!)}`)),
-        })),
-        { ...S3[1], values: h.weeks.map((w) => w.kalshi), tips: h.weeks.map((w) => `Kalshi ${f3(w.kalshi)}`) },
-        { ...S3[2], values: h.weeks.map((w) => w.vegas), tips: h.weeks.map((w) => `Vegas ${f3(w.vegas)}`) },
+        }))
+        .sort((a, b) => (a.weight === b.weight ? 0 : a.weight === 'normal' ? -1 : 1))
+    : [];
+  const marketSeries: Series[] = h
+    ? [
+        { ...S3[1], weight: 'strong', values: h.weeks.map((w) => w.kalshi), tips: h.weeks.map((w) => `Kalshi ${f3(w.kalshi)}`) },
+        { ...S3[2], weight: 'strong', values: h.weeks.map((w) => w.vegas), tips: h.weeks.map((w) => `Vegas ${f3(w.vegas)}`) },
       ]
+    : [];
+  // Legend reads markets, current models, older models. Drawn bottom to top: older models, the thick market
+  // lines, then v5+ on top so a current model running right along the market stays visible.
+  const legendSeries: Series[] = h
+    ? [...marketSeries, ...modelSeries]
     : [
         { ...S3[0], values: r.weeks.map((w) => w.acc.mine.brier), tips: r.weeks.map((w) => `Model ${f3(w.acc.mine.brier)}`) },
         { ...S3[1], values: r.weeks.map((w) => w.acc.market.brier), tips: r.weeks.map((w) => `Kalshi ${f3(w.acc.market.brier)}`) },
         { ...S3[2], values: r.weeks.map((w) => w.acc.vegas.brier), tips: r.weeks.map((w) => `Vegas ${f3(w.acc.vegas.brier)}`) },
       ];
+  const weekSeries = h ? [...modelSeries.filter((x) => x.weight === 'faint'), ...marketSeries, ...modelSeries.filter((x) => x.weight !== 'faint')] : legendSeries;
   const xLabels = h ? h.weeks.map((w) => w.label) : r.weeks.map((w) => w.label);
   // Lines that sit within a few thousandths of each other need a fourth decimal on the axis.
   const briers = weekSeries.flatMap((x) => x.values).filter((x): x is number => x !== null);
   const brierDigits = briers.length > 0 && Math.max(...briers) - Math.min(...briers) < 0.004 ? 4 : 3;
   const weekChart = lineChart({ label: 'Brier score by week, lower is better', xLabels, yFmt: (v) => v.toFixed(brierDigits), dots: 'all', series: weekSeries });
-  const weekLegend = legend(weekSeries.map((x) => ({ name: x.name, color: x.color, faint: x.faint })));
+  const weekLegend = legend(legendSeries.map((x) => ({ name: x.name, color: x.color, weight: x.weight })));
   const weekTable = h
     ? table(
         ['Week', 'Games', ...h.models.map(short), 'Kalshi', 'Vegas'],
@@ -364,7 +376,7 @@ export function renderResults(r: ResultsView): string {
 ${tiles}
 <section class="card">
   <div class="label">Accuracy by week</div>
-  <div class="small">Brier score, lower is better. A model is ahead when its line sits below Kalshi and Vegas. Each model's line starts the week it was added${h ? '; the bold lines are the three you read, Kalshi and Vegas cover every graded game' : ''}.</div>
+  <div class="small">Brier score, lower is better. A model is ahead when its line sits below Kalshi and Vegas. Each model's line starts the week it was added${h ? '; Kalshi and Vegas (thickest) cover every graded game, v5 and later are drawn in full, older models are faded' : ''}.</div>
   ${weekLegend}
   ${weekChart}
   ${weekTable}
@@ -394,7 +406,7 @@ h2.sec{font-size:17px;margin:28px 0 10px}h2.sec .small{font-weight:400;margin-le
 .tile.lead{border-color:var(--s1)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 4px;font-size:13px;color:var(--muted)}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
-.legend .faint{opacity:.7}
+.legend .faint{opacity:.55}.legend .strong{color:var(--ink);font-weight:600}.legend .strong i{height:5px}
 svg.chart{width:100%;height:auto;display:block;margin-top:4px;overflow:visible}svg.calib{max-width:340px}
 .chart .grid{stroke:var(--grid);stroke-width:1}.chart .base{stroke:var(--axis);stroke-width:1}
 .chart .ref{stroke:var(--axis);stroke-width:1.5}
