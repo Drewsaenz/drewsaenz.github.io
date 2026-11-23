@@ -19,6 +19,9 @@
  *     corroborated vote wins, so two outlets saying he starts after all clear
  *     an earlier benching. One "benched" and one "competition" outlet add up
  *     to "competition";
+ *   - "another QB will start" corroborates a benching but cannot establish one:
+ *     at least one outlet must say the starter himself was benched. Otherwise
+ *     injury replacements and "if he can't go, the backup starts" would count;
  *   - an official availability report never enters: "Available" says he is
  *     healthy, not that he starts;
  *   - recaps (game_ref "previous": "was pulled in the fourth quarter") do not vote.
@@ -79,24 +82,29 @@ export function depthChart(db: Db, cfg: ModelV4Config, team: string, starter: St
 
   // Each outlet's latest word (rows are newest first; at the same instant the more severe vote).
   const perOutlet = new Map<string, { vote: DepthVote; row: RoleRow }>();
+  const explicit = new Set<string>(); // outlets that said the starter himself is benched
   for (const r of rows) {
     const vote = voteOf(r, starter.player);
     if (!vote) continue;
     const k = r.source_channel ?? siteOf(r.source_url);
+    if (r.role === 'benched') explicit.add(k);
     const have = perOutlet.get(k);
     if (!have || (have.row.as_of === r.as_of && SEVERITY[vote] > SEVERITY[have.vote])) perOutlet.set(k, { vote, row: r });
   }
   const by = (v: DepthVote) => [...perOutlet.values()].filter((x) => x.vote === v).map((x) => x.row); // newest first
   const need = dc.min_sources;
+  // "Another QB will start" alone is not a benching: it is also what an injury replacement and
+  // "if he can't go, the backup starts" look like. At least one outlet must say he was benched.
+  const benchedSaid = [...perOutlet.entries()].some(([k, x]) => x.vote === 'benched' && explicit.has(k));
   // When each vote became corroborated: the time its `need`-th newest outlet spoke.
   const corroborated = (['benched', 'competition', 'starter'] as DepthVote[])
     .map((v) => ({ v, rows: by(v) }))
-    .filter((x) => x.rows.length >= need)
+    .filter((x) => x.rows.length >= need && (x.v !== 'benched' || benchedSaid))
     .map((x) => ({ ...x, at: x.rows[need - 1].as_of }))
     .sort((a, b) => (a.at === b.at ? SEVERITY[b.v] - SEVERITY[a.v] : a.at < b.at ? 1 : -1));
   let pick: { v: DepthVote; rows: RoleRow[] } | null = corroborated[0] ?? null;
   if (!pick) {
-    const unsure = [...by('benched'), ...by('competition')].sort((a, b) => (a.as_of < b.as_of ? 1 : -1));
+    const unsure = [...(benchedSaid ? by('benched') : []), ...by('competition')].sort((a, b) => (a.as_of < b.as_of ? 1 : -1));
     if (unsure.length >= need) pick = { v: 'competition', rows: unsure };
   }
   if (!pick || pick.v === 'starter') return null;

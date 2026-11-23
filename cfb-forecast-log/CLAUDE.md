@@ -282,7 +282,9 @@ thing: a starting QB who lost the job without being hurt (`src/model/v43.ts`).
 - For the team's starting QB (season pass-attempt leader), each outlet's latest word since the team's previous
   game is one vote: benched (he is benched, or another QB is named the starter), competition (the coach has not
   decided), or starter. A vote counts once 2 outlets cast it; the most recently corroborated vote wins, so two
-  outlets saying he starts clear a benching. One benched plus one competition outlet is a competition. Recaps
+  outlets saying he starts clear a benching. One benched plus one competition outlet is a competition. "Another QB
+  will start" corroborates a benching but cannot establish one: at least one outlet must say the starter himself
+  was benched (otherwise injury replacements and "if he can't go, the backup starts" counted). Recaps
   (`game_ref` previous) and confidence under 0.5 do not vote. The official report never enters.
 - Points: benched 3 (half the 6 for an injured starter), competition 1.5. Priors. The QB item is the larger of
   the health penalty and this; they do not stack.

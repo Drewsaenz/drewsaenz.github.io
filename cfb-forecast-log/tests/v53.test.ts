@@ -152,3 +152,16 @@ test('no starter on file or no depth_chart block: nothing happens', () => {
   assert.equal(depthChart(db, v43, 'Texas A&M', undefined, AT), null);
   assert.equal(depthChart(db, v42, 'Texas A&M', reed, AT), null);
 });
+
+test('another QB named the starter is not a benching unless some outlet says the starter was benched', () => {
+  const db = aggies();
+  // An injury replacement, or "if Reed can't go, Hart starts": nobody says Reed was benched.
+  fact(db, { player: 'Brady Hart', role: 'starter', as_of: '2026-11-20T10:00:00Z', channel: 'A' });
+  fact(db, { player: 'Brady Hart', role: 'starter', as_of: '2026-11-20T11:00:00Z', channel: 'B' });
+  fact(db, { player: 'Brady Hart', role: 'starter', as_of: '2026-11-20T12:00:00Z', channel: 'C' });
+  assert.equal(depthChart(db, v43, 'Texas A&M', reed, AT), null);
+  fact(db, { player: 'Marcel Reed', role: 'benched', as_of: '2026-11-20T13:00:00Z', channel: 'A' });
+  const dc = depthChart(db, v43, 'Texas A&M', reed, AT);
+  assert.equal(dc?.status, 'benched');
+  assert.equal(dc?.outlets, 3);
+});
