@@ -15,10 +15,13 @@ const fitted: FittedM1 = {
   lambda: 0.2,
 };
 
-test('the shipped m1 config parses and is not fitted', () => {
+test('the shipped m1 config parses; fitted_at is null or the ISO time of the fit', () => {
   const cfg = loadModelM1Config();
   assert.equal(cfg.model_version, 'm1-margin');
-  assert.equal(cfg.fitted_at, null);
+  if (cfg.fitted_at !== null) {
+    assert.match(cfg.fitted_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.ok(cfg.sources && cfg.temper !== null && cfg.lambda !== null, 'a fitted config carries sources, temper and lambda');
+  }
 });
 
 test('fitLine recovers a known line, and drops the home term when it never varies', () => {

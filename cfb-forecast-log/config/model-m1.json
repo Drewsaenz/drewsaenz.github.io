@@ -1,10 +1,35 @@
 {
   "model_version": "m1-margin",
   "injury_model_version": "v4.1-avail",
-  "fitted_at": null,
-  "sources": null,
-  "temper": null,
-  "lambda": null,
+  "fitted_at": "2026-11-22T05:41:20.290Z",
+  "sources": {
+    "sp": {
+      "a": 0.7089659483721056,
+      "b": 0.9329032923579991,
+      "c": 1.834773047028121,
+      "n": 3461
+    },
+    "fpi": {
+      "a": 0.5198937045166167,
+      "b": 1.144249024242648,
+      "c": 1.8242486722268538,
+      "n": 3461
+    },
+    "fei": {
+      "a": 0.4360747893815416,
+      "b": 21.095652106969407,
+      "c": 1.8707434025557614,
+      "n": 3461
+    },
+    "elo": {
+      "a": -0.9588924402619999,
+      "b": 0.04070796352880914,
+      "c": 4.062266752261688,
+      "n": 3461
+    }
+  },
+  "temper": 1.0313,
+  "lambda": 0.0467,
   "injury_scale": 1,
   "fade": {
     "full_hours": 72,
@@ -12,5 +37,121 @@
   },
   "min_sources": 2,
   "ats_min_gap": 2,
-  "_note": "m1-margin = a point-spread model fit on final scoring margins (src/model/m1.ts): per-source least-squares lines on 2021-2025, tempered for the season-final-ratings leak, blended with the Vegas line by lambda (fit leak-free on prior-week Elo), plus v5.1's fresh injury points faded to 0 at kickoff. sources, temper and lambda are written by `npm run m1:fit`, which refuses once m1 rows exist. injury_scale 1 is a prior (injury points are already points). Approved by Drew 2026-11-22. Any change after rows are logged is a new model_version."
+  "_note": "m1-margin = a point-spread model fit on final scoring margins (src/model/m1.ts): per-source least-squares lines on 2021-2025, tempered for the season-final-ratings leak, blended with the Vegas line by lambda (fit leak-free on prior-week Elo), plus v5.1's fresh injury points faded to 0 at kickoff. sources, temper and lambda are written by `npm run m1:fit`, which refuses once m1 rows exist. injury_scale 1 is a prior (injury points are already points). Approved by Drew 2026-11-22. Any change after rows are logged is a new model_version.",
+  "fit_summary": {
+    "samples": 3461,
+    "seasons": [
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "lines": {
+      "sp": {
+        "n": 3461,
+        "rmse": 13.562
+      },
+      "fpi": {
+        "n": 3461,
+        "rmse": 13.152
+      },
+      "fei": {
+        "n": 3461,
+        "rmse": 13.123
+      },
+      "elo": {
+        "n": 3461,
+        "rmse": 16.211
+      }
+    },
+    "lambda_by_season": {
+      "2021": 0.0459,
+      "2022": 0.0328,
+      "2023": 0.0518,
+      "2024": 0.0645,
+      "2025": 0.0387
+    },
+    "scores": {
+      "2021": {
+        "n": 655,
+        "mae_line": 12.643511450381679,
+        "mae_elo": 13.284812619830635,
+        "mae_blend": 12.650334664257164,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      },
+      "2022": {
+        "n": 681,
+        "mae_line": 12.09618208516887,
+        "mae_elo": 12.761934798800874,
+        "mae_blend": 12.097627593705077,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      },
+      "2023": {
+        "n": 698,
+        "mae_line": 11.980659025787965,
+        "mae_elo": 12.637660146496573,
+        "mae_blend": 11.988372251032148,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      },
+      "2024": {
+        "n": 713,
+        "mae_line": 12.139551192145863,
+        "mae_elo": 13.199158508801604,
+        "mae_blend": 12.165650664593127,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      },
+      "2025": {
+        "n": 714,
+        "mae_line": 11.822128851540617,
+        "mae_elo": 12.726320649145478,
+        "mae_blend": 11.821586576530128,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      },
+      "all": {
+        "n": 3461,
+        "mae_line": 12.128864490031782,
+        "mae_elo": 12.918552327793233,
+        "mae_blend": 12.137260666604838,
+        "ats": {
+          "picks": 0,
+          "won": 0,
+          "lost": 0,
+          "push": 0,
+          "rate": null
+        }
+      }
+    },
+    "note": "lambda fit with prior-week Elo as the ratings model (leak-free, conservative); sp/fpi/fei lines are in-sample on season-final ratings and tempered."
+  }
 }
