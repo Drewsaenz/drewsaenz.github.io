@@ -12,7 +12,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { openDb } from '../db';
 import { DATA_DIR, REPORTS_DIR } from '../paths';
-import { currentBoardWeek, gameDetail, gamesForWeek, health, recentNews } from './data';
+import { currentBoardWeek, gameDetail, gamesForWeek, health, picksView, recentNews } from './data';
 import { APP_HTML } from './page';
 
 const PROJECT = path.resolve(__dirname, '..', '..');
@@ -111,6 +111,10 @@ export function createServer(): http.Server {
       if (req.method === 'GET' && url.pathname === '/api/news') {
         const days = Math.min(30, Math.max(1, Number(url.searchParams.get('days') ?? 4)));
         return json(res, recentNews(db, { days, team: url.searchParams.get('team') || undefined, secOnly: url.searchParams.get('sec') === '1' }));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/picks') {
+        const days = Math.min(60, Math.max(1, Number(url.searchParams.get('days') ?? 7)));
+        return json(res, picksView(db, days));
       }
       if (req.method === 'GET' && url.pathname === '/api/health') {
         const logFile = path.join(DATA_DIR, 'jobs.log');

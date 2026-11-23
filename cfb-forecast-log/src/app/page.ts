@@ -43,7 +43,7 @@ iframe{display:block;width:100%;height:80vh;border:0;background:transparent}
 </style></head>
 <body>
 <header><div class="bar"><div class="brand">Forecast Desk</div>
-<nav><button data-tab="board" class="on">Board</button><button data-tab="games">Games</button><button data-tab="news">News</button><button data-tab="health">Health &amp; actions</button></nav></div></header>
+<nav><button data-tab="board" class="on">Board</button><button data-tab="games">Games</button><button data-tab="news">News</button><button data-tab="picks">Picks</button><button data-tab="health">Health &amp; actions</button></nav></div></header>
 <main>
 <section id="tab-board"><iframe id="tracker" src="/tracker" title="Tracker page" scrolling="no"></iframe></section>
 
@@ -64,6 +64,16 @@ iframe{display:block;width:100%;height:80vh;border:0;background:transparent}
     <div id="nlist"></div></div>
 </section>
 
+<section id="tab-picks" hidden>
+  <div class="card"><h2>Picks scorecard</h2>
+    <div class="small">What shows and articles picked, graded after the games. Break-even against the spread is 52.4%. A record over a few dozen picks is noise. No model reads this.</div>
+    <div class="row" style="margin-top:10px"><label><input type="checkbox" id="pmin" checked> Only sources with 10+ graded picks</label></div>
+    <div id="pboard"></div>
+    <h2 style="margin-top:18px">Recent picks</h2>
+    <div class="row"><select id="pdays"><option value="3">Last 3 days</option><option value="7" selected>Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option></select><input type="text" id="pq" placeholder="Filter team or source" style="flex:1;min-width:120px"></div>
+    <div id="plist"></div></div>
+</section>
+
 <section id="tab-health" hidden>
   <div class="tiles" id="tiles"></div>
   <div class="card"><h2>Actions</h2><div class="small">The same commands you would run in Terminal. One at a time.</div>
@@ -82,9 +92,9 @@ function get(u){return fetch(u).then(function(r){return r.json()})}
 // tabs
 var tabs=document.querySelectorAll('nav button');
 function show(name){tabs.forEach(function(b){b.classList.toggle('on',b.dataset.tab===name)});
-['board','games','news','health'].forEach(function(n){document.getElementById('tab-'+n).hidden=n!==name});
+['board','games','news','picks','health'].forEach(function(n){document.getElementById('tab-'+n).hidden=n!==name});
 try{localStorage.setItem('desk-tab',name)}catch(e){}
-if(name==='games')loadGames();if(name==='news')loadNews();if(name==='health')loadHealth();}
+if(name==='games')loadGames();if(name==='news')loadNews();if(name==='picks')loadPicks();if(name==='health')loadHealth();}
 tabs.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.tab)})});
 
 // games
@@ -130,6 +140,22 @@ var by={};rows.forEach(function(x){(by[x.team]=by[x.team]||[]).push(x)});
 var teams=Object.keys(by).sort();
 document.getElementById('nlist').innerHTML=teams.length?teams.map(function(team){return '<div class="team">'+esc(team)+' <span class="small">'+by[team].length+'</span></div><div class="scroll"><table>'+by[team].slice(0,30).map(factRow).join('')+'</table></div>'}).join(''):'<div class="empty">No news in this window.</div>'}
 document.getElementById('ndays').addEventListener('change',loadNews);document.getElementById('nsec').addEventListener('change',loadNews);document.getElementById('nq').addEventListener('input',renderNews);
+
+// picks
+function rec3(r){var n=r.w+r.l+r.p;return n?r.w+'-'+r.l+(r.p?'-'+r.p:''):'—'}
+function rate(r){return r.w+r.l?Math.round(100*r.w/(r.w+r.l))+'%':''}
+function loadPicks(){get('/api/picks?days='+document.getElementById('pdays').value).then(function(d){window._picks=d;renderPicks()})}
+function renderPicks(){var d=window._picks;if(!d)return;var min=document.getElementById('pmin').checked?10:1;
+var head='<tr><th>Source</th><th>Graded</th><th>Against the spread</th><th>Straight up</th><th>Underdogs (won)</th><th>Totals</th><th>Leans</th><th>Set aside</th></tr>';
+function line(r,bold){return '<tr><td>'+(bold?'<b>'+esc(r.source)+'</b>':esc(r.source))+'</td><td>'+r.graded+'</td><td>'+rec3(r.ats)+' <span class="small">'+rate(r.ats)+'</span></td><td>'+rec3(r.su)+' <span class="small">'+rate(r.su)+'</span></td><td>'+(r.dogs.n?r.dogs.n+' ('+r.dogs.w+')':'—')+'</td><td>'+rec3(r.total)+'</td><td>'+rec3(r.lean)+'</td><td class="small">'+(r.conflicted+r.unmatched)+'</td></tr>'}
+var rows=(d.total?line(d.total,true):'')+d.collections.map(function(r){return line(r,true)}).join('')+d.channels.filter(function(r){return r.graded>=min}).map(function(r){return line(r,false)}).join('');
+document.getElementById('pboard').innerHTML=d.total?'<div class="scroll"><table>'+head+rows+'</table></div>':'<div class="empty">No picks stored yet.</div>';
+var q=document.getElementById('pq').value.toLowerCase();
+var recent=d.recent.filter(function(x){return!q||[x.team,x.opponent,x.source,x.host].join(' ').toLowerCase().indexOf(q)>=0});
+document.getElementById('plist').innerHTML=recent.length?'<div class="scroll"><table>'+recent.slice(0,150).map(function(x){
+var g=x.conflicted?'<span class="pill">both sides</span>':x.grade==='win'?'<span class="pill off">won</span>':x.grade==='loss'?'<span class="pill bad">lost</span>':x.grade==='push'?'<span class="pill">push</span>':'<span class="pill warn">'+esc(x.ungraded||'pending')+'</span>';
+return '<tr><td style="white-space:nowrap">'+esc(x.team||'?')+' <span class="small">vs '+esc(x.opponent||'?')+'</span><div class="small">'+esc(x.kind.replace(/_/g,' '))+(x.line==null?'':' '+(x.kind==='spread'&&x.line>0?'+':'')+x.line)+'</div></td><td>'+g+'</td><td>'+esc(x.quote||'')+'<div class="small">'+esc(x.source||'')+(x.host?' · '+esc(x.host):'')+' · '+t(x.as_of)+'</div></td></tr>'}).join('')+'</table></div>':'<div class="empty">No picks in this window.</div>'}
+document.getElementById('pdays').addEventListener('change',loadPicks);document.getElementById('pmin').addEventListener('change',renderPicks);document.getElementById('pq').addEventListener('input',renderPicks);
 
 // health and actions
 var poll=null;

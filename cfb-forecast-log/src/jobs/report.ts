@@ -3,6 +3,7 @@
  * Score all resolved, non-manual rows per (model_version, snapshot_kind),
  * print to stdout, and write reports/YYYY-WW.md.
  */
+import { buildPicksSection, loadPicks } from '../picks';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_FOCUS_MODELS, loadScoringConfig } from '../config';
@@ -210,7 +211,7 @@ if (require.main === module) {
       )
       .all() as ScoreRow[];
     const now = new Date();
-    const md = buildReport(rows, loadScoringConfig(), now, qbFlags(db)) + '\n' + buildSpreadSection(gradedSpreadRows(db), loadModelM1Config().ats_min_gap);
+    const md = buildReport(rows, loadScoringConfig(), now, qbFlags(db)) + '\n' + buildSpreadSection(gradedSpreadRows(db), loadModelM1Config().ats_min_gap) + '\n' + buildPicksSection(loadPicks(db));
     process.stdout.write(md);
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
     const file = path.join(REPORTS_DIR, `${isoWeekLabel(now)}.md`);

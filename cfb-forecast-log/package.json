@@ -26,6 +26,8 @@
     "news:players": "tsx scripts/news.ts players",
     "news:availability": "tsx scripts/news.ts availability",
     "news:report": "tsx scripts/news.ts report",
+    "picks:extract": "tsx scripts/picks.ts extract",
+    "picks:report": "tsx scripts/picks.ts report",
     "starters": "tsx scripts/starters.ts",
     "v2:check": "tsx scripts/v2.ts check",
     "v2:backtest": "tsx scripts/v2.ts backtest",

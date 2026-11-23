@@ -3,6 +3,7 @@
  * writes to the database; actions that change things go through the same
  * npm scripts cron runs (see ACTIONS in server.ts).
  */
+import { leaderboard, loadPicks } from '../picks';
 import type { Db } from '../db';
 import { SEC_TEAMS } from '../board';
 import { parseJobLog, type JobRun } from '../tracker';
@@ -142,4 +143,19 @@ export function health(db: Db, logText: string, caffeinate: boolean | null, cron
     .get() as Health['rows'];
   const last = db.prepare(`SELECT MAX(snapshot_utc) AS t FROM forecasts WHERE snapshot_kind <> 'manual'`).get() as { t: string | null };
   return { jobs: parseJobLog(logText), caffeinate, cronLines, rows, lastSnapshot: last.t };
+}
+
+/** Picks scorecard for the Picks tab: the leaderboard over everything stored, plus the picks from the last `days` days. */
+export function picksView(db: Db, days: number, now = new Date()) {
+  const all = loadPicks(db);
+  const since = new Date(now.getTime() - days * 86_400_000).toISOString();
+  return {
+    total: leaderboard(all, () => 'All sources')[0] ?? null,
+    collections: leaderboard(all, (p) => p.collection ?? 'unknown'),
+    channels: leaderboard(all),
+    recent: all
+      .filter((p) => p.as_of >= since)
+      .slice(0, 400)
+      .map((p) => ({ as_of: p.as_of, source: p.source_channel ?? p.collection, host: p.host, team: p.team, opponent: p.opponent, kind: p.kind, line: p.line_used ?? p.line, grade: p.grade, ungraded: p.ungraded, conflicted: p.conflicted, quote: p.quote })),
+  };
 }

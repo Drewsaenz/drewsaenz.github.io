@@ -183,3 +183,49 @@ CREATE TRIGGER IF NOT EXISTS trg_spread_forecasts_no_update
 BEGIN
   SELECT RAISE(ABORT, 'spread_forecasts is append-only');
 END;
+
+-- Picks scorecard (src/picks.ts): what shows and articles picked for upcoming games.
+-- Append-only. Grades are computed at read time from games; nothing here is ever updated.
+CREATE TABLE IF NOT EXISTS picks (
+  id            INTEGER PRIMARY KEY,
+  source_url    TEXT NOT NULL,
+  source_channel TEXT,
+  source_title  TEXT,
+  collection    TEXT,                 -- transcript folder: national, otf, rss news, texas conversation
+  as_of         TEXT NOT NULL,        -- publish time of the show or article
+  host          TEXT,                 -- who made the pick, when the text says
+  team_raw      TEXT NOT NULL,        -- side picked, as extracted
+  opponent_raw  TEXT NOT NULL,
+  team          TEXT,                 -- CFBD names when they resolve
+  opponent      TEXT,
+  game_id       INTEGER REFERENCES games(game_id),   -- first game between the two after as_of; NULL = not matched, never graded
+  kind          TEXT NOT NULL,        -- spread | moneyline | total_over | total_under | team_total_over | team_total_under | lean
+  line          REAL,                 -- stated spread for the picked side (negative = favored) or the stated total
+  strength      TEXT,                 -- best_bet | pick | lean
+  predicted_score TEXT,
+  quote         TEXT,
+  timestamp_sec INTEGER,
+  extracted_at  TEXT NOT NULL,
+  model         TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_picks_once ON picks(source_url, team_raw, opponent_raw, kind, COALESCE(host, ''));
+CREATE INDEX IF NOT EXISTS idx_picks_game ON picks(game_id);
+CREATE TRIGGER IF NOT EXISTS trg_picks_no_delete BEFORE DELETE ON picks
+BEGIN
+  SELECT RAISE(ABORT, 'picks is append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_picks_no_update BEFORE UPDATE ON picks
+BEGIN
+  SELECT RAISE(ABORT, 'picks is append-only');
+END;
+CREATE TABLE IF NOT EXISTS pick_runs (
+  source_url    TEXT PRIMARY KEY,
+  file          TEXT NOT NULL,
+  sha1          TEXT NOT NULL,
+  windows       INTEGER NOT NULL,
+  picks         INTEGER NOT NULL,
+  input_tokens  INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  processed_at  TEXT NOT NULL,
+  model         TEXT NOT NULL
+);

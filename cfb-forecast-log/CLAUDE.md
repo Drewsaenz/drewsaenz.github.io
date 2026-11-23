@@ -485,6 +485,32 @@ TZ=America/Chicago
 - Adding a new rating source (needs a new `model_version`).
 - Anything touching Kalshi auth or order endpoints (answer is no in v1).
 
+## Picks scorecard (claims layer, phase 1; approved by Drew 2026-11-23)
+
+What shows and articles pick for upcoming games, graded after the games (`src/picks.ts`, `scripts/picks.ts`). The point
+is to learn which sources, if any, beat the line. **No model reads picks.** Making a source or claim type a model
+input is phase 3, needs a few hundred graded examples and a new `model_version`, and needs asking.
+
+- `npm run picks:extract` (cron hourly at :50, Haiku): windows that sound like a pick (`PICK_RE`) go to one
+  extraction call per transcript; rows land in `picks` (append-only, triggers refuse update and delete). `pick_runs`
+  remembers each file by hash, including files with no pick windows. `--dry-run` sizes a job with no API calls.
+- Kinds: spread, moneyline, total over/under, team total over/under, lean. Fields: channel, collection, host when
+  the text names one (rare: captions do not label speakers), stated line, strength, quote.
+- A pick maps to the first game between its two teams that kicks off after the publish time, within 9 days
+  (`mapPickToGame`). Mascots fall away in `resolvePickTeam`. Unmatched picks are stored with `game_id` NULL and
+  never graded; a recap published after the game cannot match.
+- Grades are computed at read time (`gradePick`), never stored. Spread picks grade against the stated line when it
+  is within 6 points of the logged Vegas line, else the Vegas line (the last non-manual snapshot's `vegas_spread`
+  before kickoff). Totals and team totals need a stated number. Games this project never snapshotted have no Vegas
+  line, so a spread pick there grades only with a stated line.
+- One episode picking both sides of a game on the same board with no named host is a panel disagreeing; those
+  picks are stored and set aside (`conflictedIds`).
+- Leaderboard per channel and per collection: against the spread, straight up, underdogs picked, totals, leans.
+  `npm run picks:report`, a "Picks scorecard" section in the weekly report, and the Picks tab in Forecast Desk.
+  Break-even against the spread is 52.4%.
+- First backfill 2026-11-23 over transcripts published since 2026-10-20.
+- Not built: phase 2 (matchup claims tied to a CFBD stat).
+
 ## Transcripts (context, and the input to the injury layer of v2, v4, v4.1 and v5)
 
 `data/transcripts/<collection>/*.md|*.txt` are YouTube transcripts (Texas football shows, pressers, film reviews) pushed from `~/Desktop/Home/TranscriptGPT`. The `.md` ones carry YAML frontmatter (title, channel, url, video_id, saved). They are gitignored with the rest of `data/`. Use them when Drew asks for qualitative context on a game or team (injuries, QB situation, coaching sentiment). They are not a rating source for v1. The only model that reads them is `v2-qb` (see Model v2 above), which Drew approved on 2026-11-02; wiring them into anything else still needs asking.
