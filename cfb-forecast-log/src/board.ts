@@ -29,6 +29,7 @@ export interface BoardRow {
   v41: number | null;
   v5: number | null;
   v51: number | null;
+  v53: number | null;
   model: number;
   kalshi: number;
   vegas: number | null;
@@ -95,11 +96,14 @@ export function tagFor(edge: number, model: number, vegas: number | null, bid: n
 
 export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: ScoringConfig, m1Home: Map<number, number> = new Map()): BoardRow[] {
   // ticker -> { v1, v2, ... }
-  const sides = new Map<string, { r: Raw; v1: number | null; v2: number | null; v4: number | null; v41: number | null; v5: number | null; v51: number | null }>();
+  const sides = new Map<string, { r: Raw; v1: number | null; v2: number | null; v4: number | null; v41: number | null; v5: number | null; v51: number | null; v53: number | null }>();
   for (const r of raw) {
-    const s = sides.get(r.ticker) ?? { r, v1: null, v2: null, v4: null, v41: null, v5: null, v51: null };
-    if (r.model_version.startsWith('v5.1')) s.v51 = r.my_prob;
-    else if (r.model_version.startsWith('v5')) s.v5 = r.my_prob;
+    const s = sides.get(r.ticker) ?? { r, v1: null, v2: null, v4: null, v41: null, v5: null, v51: null, v53: null };
+    // Exact versions: v5.2 is logged but not shown, and must not land in the v5 slot.
+    if (r.model_version === 'v5.3-fused') s.v53 = r.my_prob;
+    else if (r.model_version === 'v5.1-fused') s.v51 = r.my_prob;
+    else if (r.model_version === 'v5-fused') s.v5 = r.my_prob;
+    else if (r.model_version.startsWith('v5')) { /* v5.2: report only */ }
     else if (r.model_version.startsWith('v4.1')) s.v41 = r.my_prob;
     else if (r.model_version.startsWith('v4')) s.v4 = r.my_prob;
     else if (r.model_version.startsWith('v2')) s.v2 = r.my_prob;
@@ -109,9 +113,9 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
   }
   // One row per game: the side with the larger model-minus-Kalshi gap.
   const best = new Map<number, BoardRow>();
-  for (const { r, v1, v2, v4, v41, v5, v51 } of sides.values()) {
+  for (const { r, v1, v2, v4, v41, v5, v51, v53 } of sides.values()) {
     if (r.market_mid === null) continue;
-    const model = v51 ?? v5 ?? v41 ?? v4 ?? v2 ?? v1!;
+    const model = v53 ?? v51 ?? v5 ?? v41 ?? v4 ?? v2 ?? v1!;
     const edge = model - r.market_mid;
     const row: BoardRow = {
       game_id: r.game_id,
@@ -124,6 +128,7 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
       v41,
       v5,
       v51,
+      v53,
       model,
       kalshi: r.market_mid,
       vegas: r.vegas_prob,
@@ -195,7 +200,8 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   const hasV41 = b.rows.some((r) => r.v41 !== null);
   const hasV5 = b.rows.some((r) => r.v5 !== null);
   const hasV51 = b.rows.some((r) => r.v51 !== null);
-  const modelLabel = hasV51 ? 'Model v5.1' : hasV5 ? 'Model v5' : hasV41 ? 'Model v4.1' : hasV4 ? 'Model v4' : hasV2 ? 'Model v2' : 'Model v1';
+  const hasV53 = b.rows.some((r) => r.v53 !== null);
+  const modelLabel = hasV53 ? 'Model v5.3' : hasV51 ? 'Model v5.1' : hasV5 ? 'Model v5' : hasV41 ? 'Model v4.1' : hasV4 ? 'Model v4' : hasV2 ? 'Model v2' : 'Model v1';
   const counts = { edge: 0, wide: 0, news: 0, none: 0 };
   for (const r of b.rows) counts[r.tag] += 1;
   const secCount = b.rows.filter(isSecGame).length;
@@ -221,7 +227,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   return `
 <h2 class="sec">This week's board <span class="small">${esc(source)}</span></h2>
 <section class="card board">
-  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV51 ? ' Model is v5.1: the Vegas line blended with the v1 ratings and only the injury news since each team\'s last game, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV5 ? ' Model is v5: the Vegas line blended with the v1 ratings and the injury report, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV41 ? ' Model is v4.1: the v1 ratings adjusted for injuries and coaching changes, using the official availability report where one exists and only news two outlets agree on. Where that changed the number, v1 shows underneath.' : hasV4 ? ' Model is v4: the v1 ratings adjusted for each team\'s injuries and coaching changes. Where that changed the number, v1 shows underneath.' : hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} <b>Spread</b> is the spread model (m1, trained on final scores) when it has a number for the game, otherwise the model's probability turned into points, for the backed team,, next to the Vegas spread (\"2 more\" = the model makes the team 2 points better than Vegas does). Hypothetical only.</div>
+  <div class="small">For each game, the side the model likes more than Kalshi does. <b>Edge</b> = model at least ${Math.round(b.edge_min * 100)} points above Kalshi, within ${Math.round(b.news_gap_min * 100)} of Vegas, bid/ask gap ${WIDE_SPREAD_CENTS}¢ or less. ${hasV53 ? ' Model is v5.3: the Vegas line blended with the v1 ratings and only the injury news since each team\'s last game, including a starting quarterback benched by his coach, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV51 ? ' Model is v5.1: the Vegas line blended with the v1 ratings and only the injury news since each team\'s last game, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV5 ? ' Model is v5: the Vegas line blended with the v1 ratings and the injury report, with weights fit on this project\'s own results. Where that differs from v1, v1 shows underneath.' : hasV41 ? ' Model is v4.1: the v1 ratings adjusted for injuries and coaching changes, using the official availability report where one exists and only news two outlets agree on. Where that changed the number, v1 shows underneath.' : hasV4 ? ' Model is v4: the v1 ratings adjusted for each team\'s injuries and coaching changes. Where that changed the number, v1 shows underneath.' : hasV2 ? ' Model is v2: v1 plus the QB adjustment. Where a QB injury changed the number, v1 shows underneath.' : ''} <b>Spread</b> is the spread model (m1, trained on final scores) when it has a number for the game, otherwise the model's probability turned into points, for the backed team,, next to the Vegas spread (\"2 more\" = the model makes the team 2 points better than Vegas does). Hypothetical only.</div>
   <div class="chips" role="group" aria-label="Filter games">
     <button type="button" class="chip on" data-f="edge">Edge (${counts.edge})</button>
     <button type="button" class="chip" data-f="flagged">Edge + flagged (${counts.edge + counts.wide + counts.news})</button>

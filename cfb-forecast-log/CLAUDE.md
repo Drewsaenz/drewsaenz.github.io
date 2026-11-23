@@ -292,8 +292,10 @@ thing: a starting QB who lost the job without being hurt (`src/model/v43.ts`).
   priced. So v5.3 moves in the first week of a benching, not the second.
 - Known gap, not addressed: "starter" is still the season attempt leader, so a new starter getting hurt counts
   for nothing in any version.
-- `npm run v4:check -- --v43` previews the layer. Logged on every snapshot beside v5.1 and v5.2; v5.1 is still
-  the main model. The board's QB flag (`qbFlags`) is unchanged because the report's News check is scored off it.
+- `npm run v4:check -- --v43` previews the layer. Logged on every snapshot beside v5.1 and v5.2.
+- **Main model since 2026-11-23 (Drew).** Board, report focus list (`DEFAULT_FOCUS_MODELS`) and the Games tab use
+  v5.3; for games logged before it existed the board and Games tab fall back to v5.1. v5.1 and v5.2 move to
+  "Also logged, not read". v5.2 had matched v5.1 on every graded game when this was decided. The board's QB flag (`qbFlags`) is unchanged because the report's News check is scored off it.
 
 ## Spread model m1 (`src/model/m1.ts`, `model_version = 'm1-margin'`, approved by Drew 2026-11-22)
 
@@ -403,7 +405,7 @@ normal quantile. No line, no availability. Reads only: no rows, no model_version
 
 ### Which models to read (Drew, 2026-11-09)
 
-Read three: **v5.1-fused** (main model; v5-fused until 2026-11-12), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
+Read three: **v5.3-fused** (main model; v5-fused until 2026-11-12, v5.1-fused until 2026-11-23), **v3-anchor** (market baseline), **v1-blend** (raw-ratings check). The others
 (v2, v4, v4.1) keep logging but are not read. The weekly report puts the three first, summarizes only them, and
 scores the rest below an "Also logged, not read" divider (`focus_models` in config/scoring.json overrides the
 default list in `src/config.ts`). The tracker board shows v5 as "the model" once its rows exist.
