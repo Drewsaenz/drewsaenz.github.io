@@ -3,6 +3,7 @@ export const APP_HTML = `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Forecast Desk</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cellipse cx='16' cy='16' rx='11' ry='6.5' transform='rotate(-35 16 16)' fill='%23fff'/%3E%3Cpath d='M12.6 18.4l6.8-4.8M13.6 16.2l1.4 2M15.3 15l1.4 2M17 13.8l1.4 2' stroke='%231f6feb' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--ink:#16202c;--muted:#5d6b7c;--line:#dde3ea;--accent:#1f6feb;--ok:#1a7f45;--warn-bg:#fff4dc;--warn-ink:#7a4b00;--bad:#c62828;--soft:#eef2f7}
 @media (prefers-color-scheme:dark){:root{--bg:#0e131a;--card:#161d27;--ink:#e6ecf2;--muted:#94a3b5;--line:#273242;--accent:#5b9dff;--ok:#43c47a;--warn-bg:#3a2c0e;--warn-ink:#f3cf86;--bad:#ff6b6b;--soft:#1d2633}}
