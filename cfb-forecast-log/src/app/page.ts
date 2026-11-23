@@ -34,6 +34,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 th{color:var(--muted);font-weight:500;white-space:nowrap}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td.main,th.main{font-weight:650}
 .team{font-size:14px;font-weight:650;margin:14px 0 4px}
+details.tgroup{border-bottom:1px solid var(--line)}details.tgroup>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 2px;font-size:14px;font-weight:650}
+details.tgroup>summary::-webkit-details-marker{display:none}details.tgroup>summary::before{content:'';width:6px;height:6px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s;flex:none}
+details.tgroup[open]>summary::before{transform:rotate(45deg)}details.tgroup>summary .small{font-weight:400}details.tgroup>.scroll{margin-bottom:10px}
+.linkbtn{font:inherit;font-size:13px;background:none;border:0;color:var(--muted);cursor:pointer;padding:4px 6px;text-decoration:underline}
 pre{background:var(--soft);border-radius:8px;padding:10px;font-size:12px;max-height:340px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
 .empty{color:var(--muted);font-size:14px;padding:8px 2px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--line)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
@@ -60,7 +64,7 @@ iframe{display:block;width:100%;height:80vh;border:0;background:transparent}
   <div class="card"><h2>Injury and availability news</h2>
     <div class="row"><select id="ndays"><option value="2">Last 2 days</option><option value="4" selected>Last 4 days</option><option value="7">Last 7 days</option></select>
       <label><input type="checkbox" id="nsec" checked> SEC only</label><input type="text" id="nq" placeholder="Filter team" style="flex:1;min-width:120px"></div>
-    <div class="small">Recaps of games already played are hidden. <span class="pill off">Official</span> = conference availability report.</div>
+    <div class="row" style="justify-content:space-between"><div class="small">Recaps of games already played are hidden. <span class="pill off">Official</span> = conference availability report.</div><div><button class="linkbtn" id="nopen">Expand all</button><button class="linkbtn" id="nclose">Collapse all</button></div></div>
     <div id="nlist"></div></div>
 </section>
 
@@ -138,7 +142,14 @@ get('/api/news?days='+days+'&sec='+sec).then(function(rows){window._news=rows;re
 function renderNews(){var q=document.getElementById('nq').value.toLowerCase(),rows=(window._news||[]).filter(function(x){return!q||x.team.toLowerCase().indexOf(q)>=0});
 var by={};rows.forEach(function(x){(by[x.team]=by[x.team]||[]).push(x)});
 var teams=Object.keys(by).sort();
-document.getElementById('nlist').innerHTML=teams.length?teams.map(function(team){return '<div class="team">'+esc(team)+' <span class="small">'+by[team].length+'</span></div><div class="scroll"><table>'+by[team].slice(0,30).map(factRow).join('')+'</table></div>'}).join(''):'<div class="empty">No news in this window.</div>'}
+var auto=q&&teams.length<=3;
+document.getElementById('nlist').innerHTML=teams.length?teams.map(function(team){var f=by[team],o=f.filter(function(x){return x.status==='out'||x.status==='doubtful'}).length,off=f.some(function(x){return x.official});
+return '<details class="tgroup" data-team="'+esc(team)+'"'+(auto||openTeams[team]?' open':'')+'><summary>'+esc(team)+' <span class="small">'+f.length+' item'+(f.length===1?'':'s')+(o?' · '+o+' out or doubtful':'')+'</span>'+(off?'<span class="pill off">Official</span>':'')+'</summary><div class="scroll"><table>'+f.slice(0,30).map(factRow).join('')+'</table></div></details>'}).join(''):'<div class="empty">No news in this window.</div>';
+document.querySelectorAll('#nlist details').forEach(function(d){d.addEventListener('toggle',function(){if(d.open)openTeams[d.dataset.team]=1;else delete openTeams[d.dataset.team];saveOpen()})})}
+var openTeams={};try{openTeams=JSON.parse(localStorage.getItem('desk-news-open')||'{}')||{}}catch(e){}
+function saveOpen(){try{localStorage.setItem('desk-news-open',JSON.stringify(openTeams))}catch(e){}}
+function setAll(open){document.querySelectorAll('#nlist details').forEach(function(d){d.open=open})}
+document.getElementById('nopen').addEventListener('click',function(){setAll(true)});document.getElementById('nclose').addEventListener('click',function(){setAll(false)});
 document.getElementById('ndays').addEventListener('change',loadNews);document.getElementById('nsec').addEventListener('change',loadNews);document.getElementById('nq').addEventListener('input',renderNews);
 
 // picks
