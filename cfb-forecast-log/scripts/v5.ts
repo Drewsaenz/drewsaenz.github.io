@@ -144,7 +144,7 @@ if (cmd === 'fit') {
     const v41 = loadModelV4Config('model-v4.1.json');
     const db = openDb();
     const { cfbd, season, week } = await seasonContext();
-    const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual')`).get() as { s: string | null };
+    const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','friday','manual')`).get() as { s: string | null };
     if (!latest.s) throw new Error('no snapshot yet');
     const rows = db
       .prepare(

@@ -12,6 +12,7 @@ const TZ = 'America/Chicago';
 const JOBS: { name: string; schedule: string }[] = [
   { name: 'ratings', schedule: '0 6 * * 2' },
   { name: 'snapshot:tuesday', schedule: '0 7 * * 2' },
+  { name: 'snapshot:friday', schedule: '40 19 * * 5' },
   { name: 'snapshot:pregame', schedule: '*/30 * * * 4,5,6' },
   { name: 'resolve', schedule: '0 6 * * 0,1' },
   { name: 'report', schedule: '30 6 * * 1' },

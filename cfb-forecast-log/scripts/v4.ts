@@ -21,7 +21,7 @@ runJob('v4:check', async () => {
   const cfg = loadModelV4Config(v43 ? 'model-v4.3.json' : v41 ? 'model-v4.1.json' : undefined);
   const { cfbd, season, week } = await seasonContext();
   const db = openDb();
-  const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual')`).get() as { s: string | null };
+  const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','friday','manual')`).get() as { s: string | null };
   if (!latest.s) throw new Error('no snapshot yet');
   const rows = db
     .prepare(

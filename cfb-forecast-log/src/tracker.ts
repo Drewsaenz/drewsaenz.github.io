@@ -43,7 +43,7 @@ export interface TrackerState {
   jobs: JobRun[];
 }
 
-const JOBS = ['ratings', 'snapshot:tuesday', 'snapshot:report', 'snapshot:pregame', 'resolve', 'report', 'news:extract', 'news:availability'];
+const JOBS = ['ratings', 'snapshot:tuesday', 'snapshot:report', 'snapshot:friday', 'snapshot:pregame', 'resolve', 'report', 'news:extract', 'news:availability'];
 /** Jobs that run many times a day: one bad run is noise, a run of them is an outage (a dead API key, a changed page). */
 const FREQUENT_JOBS = new Set(['news:extract', 'news:availability']);
 const FREQUENT_FAIL_STREAK = 3;

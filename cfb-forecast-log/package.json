@@ -10,6 +10,7 @@
     "ratings": "tsx src/jobs/ratings.ts",
     "snapshot:tuesday": "tsx src/jobs/snapshot.ts tuesday",
     "snapshot:report": "tsx src/jobs/snapshot.ts report",
+    "snapshot:friday": "tsx src/jobs/snapshot.ts friday",
     "snapshot:pregame": "tsx src/jobs/snapshot.ts pregame",
     "snapshot:manual": "tsx src/jobs/snapshot.ts manual",
     "resolve": "tsx src/jobs/resolve.ts",

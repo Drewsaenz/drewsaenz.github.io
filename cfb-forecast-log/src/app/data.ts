@@ -25,7 +25,7 @@ export function currentBoardWeek(db: Db): { season: number; week: number } | nul
     (db
       .prepare(
         `SELECT g.season, g.week FROM forecasts f JOIN games g ON g.game_id = f.game_id
-          WHERE f.snapshot_kind IN ('tuesday','report','manual') AND g.kickoff_utc >= datetime(f.snapshot_utc, '-1 day')
+          WHERE f.snapshot_kind IN ('tuesday','report','friday','manual') AND g.kickoff_utc >= datetime(f.snapshot_utc, '-1 day')
           ORDER BY f.snapshot_utc DESC, g.kickoff_utc ASC LIMIT 1`,
       )
       .get() as { season: number; week: number } | undefined) ?? null

@@ -131,7 +131,7 @@ runJob(`snapshot:${kind}`, async () => {
   const selected = mapped.filter(({ game }) => {
     const kick = Date.parse(game.kickoff_utc);
     if (kick <= now.getTime()) return false;
-    if (kind === 'tuesday' || kind === 'report') return game.week === week;
+    if (kind === 'tuesday' || kind === 'report' || kind === 'friday') return game.week === week;
     if (kind === 'pregame') return kick - now.getTime() <= PREGAME_WINDOW_MS;
     return true;
   });

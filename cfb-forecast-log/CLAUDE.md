@@ -338,12 +338,23 @@ is ingested (cron 19:40-21:40 CT Wednesday; first run after the report writes, l
 unique index). Writes nothing unless an official report was stored in the last 24 hours. Comparing Tuesday ->
 report -> pregame Kalshi moves against v4 shows whether Kalshi lags official news.
 
+### `friday` snapshot (Friday evening, approved by Drew 2026-11-23)
+
+`npm run snapshot:friday` (cron Fri 19:40 CT, after the SEC's 19:10 update is ingested): the week's games that have
+not kicked off, re-priced with every model, `snapshot_kind = 'friday'`. Why: most lineup and injury news lands
+Thursday and Friday, after the Wednesday `report` snapshot, and by `pregame` the v5 family has faded its injury
+term to zero (week 12: the Reed benching was corroborated Friday 5pm and no snapshot weighted it). Scored like
+any other kind. Note the v5 fade is unchanged: about 20 hours before a Saturday kickoff the injury term counts at
+roughly 0.25 to 0.35, so v5.x moves a little here; v4.x (no fade) and the Friday-to-pregame Kalshi move are the
+cleaner read on whether Friday news is priced. One run per week: reruns are no-ops via the unique index.
+
 ## Jobs (`npm run <name>`)
 
 | Job        | When (America/Chicago)          | Does |
 |------------|----------------------------------|------|
 | `ratings`  | Tue 06:00                        | Pull SP+, Elo, FPI from CFBD; scrape FEI; upsert `ratings` |
 | `snapshot:tuesday` | Tue 07:00                | Pull games + lines + Kalshi markets for the week; write one `forecasts` row per market, `snapshot_kind='tuesday'` |
+| `snapshot:friday`  | Fri 19:40                | Same markets as Tuesday that have not kicked off, `snapshot_kind='friday'` |
 | `snapshot:pregame` | every 30 min Thu–Sat     | For games kicking off in the next 90 min with no `pregame` row yet, write a `pregame` row |
 | `resolve`  | Sun 06:00 and Mon 06:00          | Pull completed games; fill `outcome` + `resolved_at` on all pending rows. Rows that can't be graded fairly (game cancelled, moved to another week, dropped by CFBD, or a pregame row whose kickoff later moved) go to `forecast_voids` instead (rules in `src/grading.ts`) |
 | `report`   | Mon 06:30                        | Score everything resolved; write `reports/YYYY-WW.md` |

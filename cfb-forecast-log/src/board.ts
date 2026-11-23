@@ -145,7 +145,7 @@ export function buildBoard(raw: Raw[], flags: Map<number, string[]>, cfg: Scorin
 
 export function collectBoard(db: Db, cfg: ScoringConfig): BoardView | null {
   const latest = db
-    .prepare(`SELECT snapshot_kind AS kind, snapshot_utc FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual') ORDER BY snapshot_utc DESC LIMIT 1`)
+    .prepare(`SELECT snapshot_kind AS kind, snapshot_utc FROM forecasts WHERE snapshot_kind IN ('tuesday','report','friday','manual') ORDER BY snapshot_utc DESC LIMIT 1`)
     .get() as { kind: string; snapshot_utc: string } | undefined;
   if (!latest) return null;
   const raw = db
@@ -199,7 +199,7 @@ export function renderBoard(b: BoardView, fmtTime: (iso: string) => string): str
   const counts = { edge: 0, wide: 0, news: 0, none: 0 };
   for (const r of b.rows) counts[r.tag] += 1;
   const secCount = b.rows.filter(isSecGame).length;
-  const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : b.kind === 'report' ? `After the official availability report, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
+  const source = b.kind === 'tuesday' ? `Tuesday snapshot, ${fmtTime(b.snapshot_utc)}` : b.kind === 'report' ? `After the official availability report, ${fmtTime(b.snapshot_utc)}` : b.kind === 'friday' ? `Friday evening snapshot, ${fmtTime(b.snapshot_utc)}` : `Preview from a manual run, ${fmtTime(b.snapshot_utc)}. Not scored.`;
   const body = b.rows
     .map((r) => {
       const v1note = r.v1 !== null && Math.abs(r.model - r.v1) >= 0.005 ? `<div class="sub" title="v1, the ratings alone, before the availability adjustment">v1 ${p2(r.v1)}</div>` : '';
