@@ -491,7 +491,7 @@ What shows and articles pick for upcoming games, graded after the games (`src/pi
 is to learn which sources, if any, beat the line. **No model reads picks.** Making a source or claim type a model
 input is phase 3, needs a few hundred graded examples and a new `model_version`, and needs asking.
 
-- `npm run picks:extract` (cron hourly at :50, Haiku): windows that sound like a pick (`PICK_RE`) go to one
+- `npm run picks:extract` (Haiku; not on cron): windows that sound like a pick (`PICK_RE`) go to one
   extraction call per transcript; rows land in `picks` (append-only, triggers refuse update and delete). `pick_runs`
   remembers each file by hash, including files with no pick windows. `--dry-run` sizes a job with no API calls.
 - Kinds: spread, moneyline, total over/under, team total over/under, lean. Fields: channel, collection, host when
@@ -508,7 +508,9 @@ input is phase 3, needs a few hundred graded examples and a new `model_version`,
 - Leaderboard per channel and per collection: against the spread, straight up, underdogs picked, totals, leans.
   `npm run picks:report`, a "Picks scorecard" section in the weekly report, and the Picks tab in Forecast Desk.
   Break-even against the spread is 52.4%.
-- First backfill 2026-11-23 over transcripts published since 2026-10-20.
+- First backfill 2026-11-23 over transcripts published since 2026-10-20, stopped at 2,831 of 3,293 files when the API
+  balance ran low; Drew chose to leave the rest (348 files with pick windows, `npm run picks:extract` resumes it).
+  No picks cron is installed: extraction runs only when started by hand.
 - Not built: phase 2 (matchup claims tied to a CFBD stat).
 
 ## Transcripts (context, and the input to the injury layer of v2, v4, v4.1 and v5)
