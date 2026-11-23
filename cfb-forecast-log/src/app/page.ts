@@ -97,7 +97,7 @@ return '<button class="game'+(sel===g.game_id?' on':'')+'" data-id="'+g.game_id+
 var el=document.getElementById('glist');el.innerHTML=html||'<div class="empty">No games match.</div>';
 el.querySelectorAll('.game').forEach(function(b){b.addEventListener('click',function(){sel=Number(b.dataset.id);flip=false;renderList();loadGame()})})}
 document.getElementById('gsec').addEventListener('change',renderList);document.getElementById('gq').addEventListener('input',renderList);
-var ORDER=['v5.1-fused','v3-anchor','v1-blend','v5.2-fused','v5-fused','v4.1-avail','v4-avail','v2-qb'],MAIN={'v5.1-fused':1};
+var ORDER=['v5.1-fused','v3-anchor','v1-blend','v5.3-fused','v5.2-fused','v5-fused','v4.1-avail','v4-avail','v2-qb'],MAIN={'v5.1-fused':1};
 function loadGame(){get('/api/game?id='+sel).then(renderGame)}
 function ncdf(x){var t=1/(1+0.3275911*Math.abs(x)/Math.SQRT2),y=1-((((1.061405429*t-1.453152027)*t+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x/2);return x<0?(1-y)/2:(1+y)/2}
 function nq(p){p=Math.min(0.999,Math.max(0.001,p));var lo=-6,hi=6;for(var i=0;i<60;i++){var m=(lo+hi)/2;if(ncdf(m)<p)lo=m;else hi=m}return (lo+hi)/2}

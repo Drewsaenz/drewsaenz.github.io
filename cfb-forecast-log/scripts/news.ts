@@ -5,6 +5,7 @@
  *   npm run news:import  -- --in data/news-work [--model manual]
  *   npm run news:report  -- [--days 10]
  *   npm run news:restamp -- [--dir data/transcripts]
+ *   npm run news:role -- [--dry-run] [--model id] [--since date]   tag stored QB facts with the lineup decision they report
  *   npm run news:gameref -- [--dry-run] [--model id]   tag facts stored before game_ref existed (recap vs upcoming)
  *   npm run news:players -- [--dry-run]   resolve stored player names (and positions) to the roster
  *   npx tsx scripts/news.ts teams [--dry-run]   after adding news aliases: give stored facts with no team their CFBD team
@@ -35,7 +36,7 @@ import { loadEnv, requireEnv } from '../src/env';
 import { log, runJob } from '../src/log';
 import { DATA_DIR } from '../src/paths';
 import { z } from 'zod';
-import { FactSchema, NEWS_MODEL, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, classifyGameRefs, tagOfficialGameRefs } from '../src/news';
+import { FactSchema, NEWS_MODEL, ROLES, classifyRoles, alreadyProcessed, extractFacts, listTranscripts, parseTranscript, relevantWindows, resolveFactPlayers, resolveFactTeams, restampFacts, sha1, storeFacts, teamNews, classifyGameRefs, tagOfficialGameRefs } from '../src/news';
 import { canonicalPlayer, factPositionOf, fullName, indexRoster, rosterMatch, type RosterIndex } from '../src/players';
 import { AvailabilityFileSchema, teamReportFacts } from '../src/availability';
 import { sameName } from '../src/model/v2';
@@ -220,7 +221,7 @@ if (cmd === 'extract') {
     const canonical = teamsInSeason(db, season);
     if (canonical.size === 0) log.warn(`no games stored for ${season}; team names will not be resolved to CFBD names`);
     const kalshiPlusNews = { ...aliases.kalshi, ...(aliases.news ?? {}) };
-    const ImportSchema = z.object({ source_file: z.string(), facts: z.array(FactSchema) });
+    const ImportSchema = z.object({ source_file: z.string(), facts: z.array(FactSchema.extend({ role: z.enum(ROLES).default('none') })) });
     const roster = await loadRoster(season);
 
     const files = fs.existsSync(inDir) ? fs.readdirSync(inDir).filter((f) => f.endsWith('.facts.json')).sort() : [];
@@ -372,6 +373,35 @@ if (cmd === 'extract') {
     })();
     log.info(`tagged ${tags.size} of ${rows.length}: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}; tokens in=${input_tokens} out=${output_tokens}`);
   });
+} else if (cmd === 'role') {
+  runJob('news:role', async () => {
+    loadEnv();
+    const dryRun = flag('dry-run');
+    const model = arg('model', NEWS_MODEL)!;
+    const since = arg('since', '2026-07-01')!;
+    const db = openDb();
+    const rows = db
+      .prepare(`SELECT id, player, detail FROM news_facts WHERE role IS NULL AND position = 'QB' AND model <> 'availability-report' AND detail IS NOT NULL AND as_of >= ? ORDER BY id`)
+      .all(since) as { id: number; player: string | null; detail: string }[];
+    if (rows.length === 0) {
+      log.info('no untagged quarterback facts');
+      return;
+    }
+    const chars = rows.reduce((n, r) => n + Math.min(300, r.detail.length) + 30, 0);
+    log.info(`${rows.length} quarterback fact(s) to classify in ${Math.ceil(rows.length / 80)} call(s) (model=${model}); roughly ${Math.round(chars / 4 / 1000)}k tokens in, ${Math.round((rows.length * 12) / 1000)}k out${dryRun ? ' [dry run: no calls, no writes]' : ''}`);
+    if (dryRun) return;
+    const client = new Anthropic();
+    const { tags, input_tokens, output_tokens } = await classifyRoles(client, rows, model);
+    const upd = db.prepare('UPDATE news_facts SET role = ? WHERE id = ? AND role IS NULL');
+    const counts: Record<string, number> = {};
+    db.transaction(() => {
+      for (const [id, role] of tags) {
+        upd.run(role, id);
+        counts[role] = (counts[role] ?? 0) + 1;
+      }
+    })();
+    log.info(`tagged ${tags.size} of ${rows.length}: ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}; tokens in=${input_tokens} out=${output_tokens}`);
+  });
 } else if (cmd === 'players') {
   // One-time (and safe to re-run) cleanup: resolve every stored player name
   // against the roster. Where the new name collides with a fact already stored
@@ -456,6 +486,6 @@ if (cmd === 'extract') {
     }
   });
 } else {
-  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|gameref|players|teams|availability|report> [options]');
+  console.error('usage: tsx scripts/news.ts <extract|windows|import|restamp|gameref|role|players|teams|availability|report> [options]');
   process.exit(2);
 }

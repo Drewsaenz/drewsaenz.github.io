@@ -159,6 +159,9 @@ export function relevantWindows(lines: TranscriptLine[]): Window[] {
 
 // ------------------------------------------------------------ extraction
 
+export const ROLES = ['starter', 'benched', 'competition', 'none'] as const;
+export type Role = (typeof ROLES)[number];
+
 export const FactSchema = z.object({
   team: z.string().describe('Full team name as commonly written, e.g. "Mississippi State", "Texas", "Ohio State". Never an abbreviation.'),
   player: z.string().nullable().describe('Player or coach name as spoken; null if the fact is about a position group.'),
@@ -168,11 +171,15 @@ export const FactSchema = z.object({
   game_ref: z
     .enum(['upcoming', 'previous', 'season', 'unknown'])
     .describe('Which game the statement is about: "upcoming" = the team\'s next game; "previous" = a game already played (a recap, e.g. "left the game", "played through it", "missed last week"); "season" = the rest of the season; "unknown" if unclear.'),
+  role: z
+    .enum(ROLES)
+    .describe('A coach\'s lineup decision for the next game, separate from health: "benched" = a healthy player lost his starting job or will not start by the coach\'s choice; "starter" = named or reported as the starter for the next game (including a backup taking over); "competition" = the coach says the starting job is open or undecided; "none" for everything else, including injuries.'),
   detail: z.string().describe('One sentence paraphrase or short quote of what was said, including who said it if a coach was quoted.'),
   confidence: z.number().min(0).max(1).describe('1.0 = stated as fact by a coach or official report; 0.5 = beat reporter expectation; 0.2 = speculation.'),
   timestamp_sec: z.number().int().describe('Approximate second in the video where this was said.'),
 });
-export type Fact = z.infer<typeof FactSchema>;
+/** role is optional in code (hand-written imports and facts built before 2026-11-23 omit it); the extractor always sets it. */
+export type Fact = Omit<z.infer<typeof FactSchema>, 'role'> & { role?: Role };
 
 const FactsSchema = z.object({ facts: z.array(FactSchema) });
 
@@ -188,6 +195,7 @@ Rules:
 - Auto-captions misspell names. Correct obvious misspellings when the identity is clear from context; otherwise keep the spoken form.
 - One fact per player per status. If the same fact is repeated, return it once.
 - Set game_ref carefully. A statement about what happened in a game already played ("left in the third quarter", "played through an ankle injury in the win", "was out last week") is "previous", even if it implies something about next week. Only use "upcoming" when the speaker is talking about the next game ("ruled out for Saturday", "expected to start against LSU", listed on this week's availability report). Season-ending injuries and firings are "season".
+- Set role only for a lineup decision, never for an injury. "Hart will start in place of Reed" is two facts: Hart role "starter", Reed role "benched". "The coach has not decided who starts" is role "competition" for each quarterback named (player null if none is named). A player pulled during a game already played is game_ref "previous"; when the statement also says who starts the next game, set game_ref by that forward-looking part ("upcoming"). The status field keeps describing health only as before; role does not change how you fill it.
 - If a segment contains no availability facts, return an empty list.`;
 
 export interface ExtractResult {
@@ -286,6 +294,46 @@ export async function classifyGameRefs(client: Anthropic, items: { id: number; d
   return { tags, input_tokens, output_tokens };
 }
 
+const RoleBatch = z.object({ items: z.array(z.object({ id: z.number().int(), role: z.enum(ROLES) })) });
+
+const ROLE_SYSTEM = `You classify one-sentence college football quarterback notes by the LINEUP DECISION they report, separate from health.
+
+- "benched": a healthy quarterback lost his starting job, was pulled for performance, or will not start by the coach's choice ("was benched", "is being replaced as the starter", "the coach moved on from him").
+- "starter": the quarterback is named, reported or expected to start a game ("will make his first start", "is expected to start against LSU", "entered as the replacement starter").
+- "competition": the coach says the starting job is open or undecided ("has not decided who starts", "the competition is ongoing", "status as the starter is up for debate").
+- "none": everything else, including every note that is only about an injury, a return from injury, playing time already in the past with no lineup decision, or performance.
+
+A note that says one quarterback replaces another is about the player the note is filed under: each line starts with that player's name (or "(no name)").
+
+Return one item per input id, in any order.`;
+
+/** Tag already-stored quarterback facts (written before role existed) from their detail text. ~80 per call. */
+export async function classifyRoles(client: Anthropic, items: { id: number; player: string | null; detail: string }[], model = NEWS_MODEL): Promise<{ tags: Map<number, Role>; input_tokens: number; output_tokens: number }> {
+  const tags = new Map<number, Role>();
+  let input_tokens = 0;
+  let output_tokens = 0;
+  for (let i = 0; i < items.length; i += 80) {
+    const batch = items.slice(i, i + 80);
+    const user = batch.map((x) => `${x.id}: [${x.player ?? '(no name)'}] ${x.detail.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
+    const response = await client.messages.parse({
+      model,
+      max_tokens: 8000,
+      system: ROLE_SYSTEM,
+      messages: [{ role: 'user', content: user }],
+      output_config: { format: zodOutputFormat(RoleBatch), effort: 'low' },
+    });
+    input_tokens += response.usage.input_tokens;
+    output_tokens += response.usage.output_tokens;
+    if (response.stop_reason === 'refusal' || !response.parsed_output) {
+      log.warn(`news: role batch ${i / 80 + 1} not classified (stop_reason=${response.stop_reason})`);
+      continue;
+    }
+    const ids = new Set(batch.map((x) => x.id));
+    for (const it of response.parsed_output.items) if (ids.has(it.id)) tags.set(it.id, it.role);
+  }
+  return { tags, input_tokens, output_tokens };
+}
+
 /** Official availability-report facts need no model: upcoming, or season when stored with season scope. Returns rows updated. */
 export function tagOfficialGameRefs(db: Db): number {
   return db
@@ -337,8 +385,8 @@ export function alreadyProcessed(db: Db, url: string, hash: string): boolean {
 export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], run: { file: string; sha1: string; windows: number; input_tokens: number; output_tokens: number; model: string }): number {
   const now = new Date().toISOString();
   const ins = db.prepare(`
-    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, player_raw, position, status, scope, game_ref, detail, confidence, timestamp_sec, extracted_at, model)
-    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @player_raw, @position, @status, @scope, @game_ref, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
+    INSERT OR IGNORE INTO news_facts (source_url, source_channel, source_title, as_of, team_raw, team, player, player_raw, position, status, scope, game_ref, role, detail, confidence, timestamp_sec, extracted_at, model)
+    VALUES (@source_url, @source_channel, @source_title, @as_of, @team_raw, @team, @player, @player_raw, @position, @status, @scope, @game_ref, @role, @detail, @confidence, @timestamp_sec, @extracted_at, @model)`);
   const runStmt = db.prepare(`
     INSERT INTO news_runs (source_url, file, sha1, windows, facts, input_tokens, output_tokens, processed_at, model)
     VALUES (@source_url, @file, @sha1, @windows, @facts, @input_tokens, @output_tokens, @processed_at, @model)
@@ -360,6 +408,7 @@ export function storeFacts(db: Db, meta: TranscriptMeta, facts: StoredFact[], ru
         status: f.status,
         scope: f.scope,
         game_ref: f.game_ref ?? 'unknown',
+        role: f.role ?? 'none',
         detail: f.detail,
         confidence: f.confidence,
         timestamp_sec: f.timestamp_sec,

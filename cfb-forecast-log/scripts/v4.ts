@@ -1,6 +1,6 @@
 /**
  * v4-avail helper CLI. Read-only: writes no forecasts.
- *   npm run v4:check [-- --all] [--v41]   this week's games where v4 (or v4.1) moves v1, with the reasons
+ *   npm run v4:check [-- --all] [--v41 | --v43]   this week's games where v4 (or v4.1, or v4.3 with the depth-chart layer) moves v1, with the reasons
  *
  * Uses the v1 probabilities and Kalshi prices from the latest Tuesday, report or
  * manual snapshot, and today's facts, so it shows what v4 would say right now.
@@ -14,10 +14,11 @@ import { adjustmentFor, loadV4Inputs } from '../src/model/v4-inputs';
 
 const all = process.argv.includes('--all');
 const v41 = process.argv.includes('--v41');
-const label = v41 ? 'v4.1' : 'v4';
+const v43 = process.argv.includes('--v43');
+const label = v43 ? 'v4.3' : v41 ? 'v4.1' : 'v4';
 
 runJob('v4:check', async () => {
-  const cfg = loadModelV4Config(v41 ? 'model-v4.1.json' : undefined);
+  const cfg = loadModelV4Config(v43 ? 'model-v4.3.json' : v41 ? 'model-v4.1.json' : undefined);
   const { cfbd, season, week } = await seasonContext();
   const db = openDb();
   const latest = db.prepare(`SELECT MAX(snapshot_utc) AS s FROM forecasts WHERE snapshot_kind IN ('tuesday','report','manual')`).get() as { s: string | null };

@@ -115,6 +115,7 @@ export function teamReportFacts(source: string, page: string | null, g: Availabi
       // exempt "Out" = listed out long-term rather than week to week.
       scope: r.exempt === 'Out' ? 'season' : 'game',
       game_ref: r.exempt === 'Out' ? 'season' : 'upcoming',
+      role: 'none', // the report speaks to health only
       detail: `${r.status} on the ${source} ${type.toLowerCase()} availability report (${when}) for ${g.kickoff_date ?? 'the game'}${vs}.`,
       confidence: 1,
       timestamp_sec: 0,

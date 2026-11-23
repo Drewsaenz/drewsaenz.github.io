@@ -80,6 +80,14 @@ runJob(`snapshot:${kind}`, async () => {
   const v52 = v52cfg.fitted_at && v52cfg.coefs ? v52cfg : null;
   if (!v52) log.warn(`config/model-v5.2.json has no coefficients; no ${v52cfg.model_version} rows this snapshot.`);
   else if (v52.injury_model_version !== v42.model_version) throw new Error(`model-v5.2.json expects injury model ${v52.injury_model_version} but model-v4.2.json is ${v42.model_version}`);
+  const v43 = loadModelV4Config('model-v4.3.json');
+  if (v43.base_model_version !== model.model_version) {
+    throw new Error(`config/model-v4.3.json builds on ${v43.base_model_version} but model-v1.json is ${model.model_version}`);
+  }
+  const v53cfg = loadModelV5Config('model-v5.3.json');
+  const v53 = v53cfg.fitted_at && v53cfg.coefs ? v53cfg : null;
+  if (!v53) log.warn(`config/model-v5.3.json has no coefficients; no ${v53cfg.model_version} rows this snapshot.`);
+  else if (v53.injury_model_version !== v43.model_version) throw new Error(`model-v5.3.json expects injury model ${v53.injury_model_version} but model-v4.3.json is ${v43.model_version}`);
   const now = new Date();
   const { cfbd, season, week, games } = await seasonContext(now);
   const aliases = loadAliases();
@@ -173,6 +181,16 @@ runJob(`snapshot:${kind}`, async () => {
     }
     return adj52.get(team)!;
   };
+  // v5.3: v5.2 plus the depth-chart layer (a benched or undecided starting QB).
+  const adj53 = new Map<string, TeamAdjustment>();
+  const adjFor53 = (team: string, at: string) => {
+    if (!adj53.has(team)) {
+      const st = v4Starters.get(team);
+      const base = adjustmentFor(db, v43, v4Inputs!, v4Starters, team, at);
+      adj53.set(team, freshAdjustment(db, v43, base, at, st ? weeksMissed(v4Inputs!.weekly, team, st.player, nameMatcher(v43)) : 0));
+    }
+    return adj53.get(team)!;
+  };
 
   const snapshot_utc = now.toISOString();
   const rows: ForecastInsert[] = [];
@@ -238,6 +256,14 @@ runJob(`snapshot:${kind}`, async () => {
       p52 = predictV5(v52, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: adjFor52(opponent, snapshot_utc).points - adjFor52(m.yes_team, snapshot_utc).points, hoursToKickoff: hours });
       rows.push({ ...v1Row, model_version: v52.model_version, my_prob: p52 });
     }
+    let p53: number | null = null;
+    if (v53) {
+      const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
+      const [y53, o53] = [adjFor53(m.yes_team, snapshot_utc), adjFor53(opponent, snapshot_utc)];
+      p53 = predictV5(v53, { p1: pred.prob, pVegas: v1Row.vegas_prob, injuryPoints: o53.points - y53.points, hoursToKickoff: hours });
+      rows.push({ ...v1Row, model_version: v53.model_version, my_prob: p53 });
+      for (const a of [y53, o53]) for (const i of a.items) if (i.status === 'benched' || i.status === 'competition') log.info(`  v5.3 ${a.team} QB ${i.player} ${i.status} ${i.points.toFixed(1)} (${i.note})`);
+    }
     if (m1 && !spreadRows.some((r) => r.game_id === g.game_id)) {
       const hours = (Date.parse(g.kickoff_utc) - now.getTime()) / 3_600_000;
       const pm = predictM1(m1, {
@@ -257,7 +283,7 @@ runJob(`snapshot:${kind}`, async () => {
     if (ay.points > 0.05 || ao.points > 0.05 || ay.coach.length || ao.coach.length) log.info(`  v4 ${describe(ay)} | ${describe(ao)}`);
     const qbNote = [q.yes_qb, q.opp_qb].filter((x) => x && x.weight > 0).map((x) => `${x!.team} QB ${x!.player} ${x!.status}`);
     log.info(
-      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${p51 === null ? '' : ` v5.1=${p51.toFixed(3)}`}${p52 === null ? '' : ` v5.2=${p52.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
+      `${m.ticker}: ${m.yes_team} my=${pred.prob.toFixed(3)} v2=${q.prob.toFixed(3)} v3=${p3.toFixed(3)} v4=${p4.toFixed(3)} v4.1=${p41.toFixed(3)}${p5 === null ? '' : ` v5=${p5.toFixed(3)}`}${p51 === null ? '' : ` v5.1=${p51.toFixed(3)}`}${p52 === null ? '' : ` v5.2=${p52.toFixed(3)}`}${p53 === null ? '' : ` v5.3=${p53.toFixed(3)}`}${qbNote.length ? ` (${qbNote.join('; ')})` : ''} [${pred.sources_used.join(',')}] ` +
         `mkt=${hasQuote ? ((m.yes_bid! + m.yes_ask!) / 200).toFixed(3) : 'n/a'} vegas=${spread === null ? 'n/a' : vegasProb(model, spread, yesIsHome).toFixed(3)}`,
     );
   }

@@ -1,0 +1,54 @@
+{
+  "model_version": "v4.3-avail",
+  "base_model_version": "v1-blend",
+  "created_at": "2026-11-23",
+  "points_to_logit": 0.14105,
+  "status_weights": {
+    "out": 1,
+    "doubtful": 0.75,
+    "limited": 0.5,
+    "questionable": 0.35,
+    "probable": 0.1,
+    "available": 0,
+    "returning": 0
+  },
+  "lookback_days": 8,
+  "min_confidence": 0.5,
+  "qb": {
+    "points": 6,
+    "min_starter_share": 0.4,
+    "weeks_checked": 3,
+    "fade_per_missed_week": 0.25,
+    "min_fade": 0.25
+  },
+  "rb_points": 3,
+  "receiver_points": 4,
+  "defense_points": 8,
+  "ol_points_each": 0.6,
+  "ol_cap": 2,
+  "non_qb_cap": 6,
+  "coach": {
+    "window_days": 21,
+    "head_coach_change_points": 1,
+    "coordinator_change_points": 0
+  },
+  "sources": {
+    "official_model": "availability-report",
+    "min_unofficial_sources": 2,
+    "unnamed_outlet": "by_site"
+  },
+  "name_match": "strict",
+  "depth_chart": {
+    "bench_points": 3,
+    "role_weights": {
+      "benched": 1,
+      "competition": 0.5
+    },
+    "min_sources": 2
+  },
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v4.3-avail = v4.2-avail (same weights, layering and strict names) plus depth_chart: the starting QB losing his job without being hurt (src/model/v43.ts). Facts carry a role (starter, benched, competition) separate from health; each outlet's latest word since the team's previous game is one vote, a vote counts once 2 outlets cast it, the most recently corroborated vote wins, and an official 'Available' cannot clear a benching because it only says he is healthy. Benched costs bench_points 3 (half the 6 for an injured starter: the coach chose the backup, so the drop-off is smaller than an injury forces), an undecided job half of that. The QB item is the larger of the health penalty and this; they do not stack. Every number is a prior. Motivated by week 12 Oklahoma-Texas A&M (Brady Hart over Marcel Reed, Reed 'Available' on the SEC report). Not logged as its own model: it is the injury layer of v5.3-fused. Approved by Drew 2026-11-23. Any change after v5.3 rows exist is a new model_version."
+}

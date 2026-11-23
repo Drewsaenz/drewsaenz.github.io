@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS news_facts (
   status        TEXT NOT NULL,        -- out | doubtful | questionable | probable | available | returning | limited | unknown
   scope         TEXT,                 -- game | weeks | season | unknown
   game_ref      TEXT,                 -- upcoming | previous | season | unknown: which game the statement is about (NULL before 2026-11-09)
+  role          TEXT,                 -- starter | benched | competition | none: a coach's lineup decision, separate from health (NULL before 2026-11-23)
   detail        TEXT,                 -- short paraphrase or quote
   confidence    REAL,
   timestamp_sec INTEGER,

@@ -83,6 +83,18 @@ export const ModelV4ConfigSchema = z.object({
    * name only when one player on file has it). Absent = sameName, as v4 to v5.1.
    */
   name_match: z.literal('strict').optional(),
+  /**
+   * v4.3+: the starting QB losing his job without being hurt (src/model/v43.ts).
+   * bench_points x role weight, when min_sources outlets report it since the
+   * team's previous game. Absent = benchings are not counted, as v4 to v4.2.
+   */
+  depth_chart: z
+    .object({
+      bench_points: z.number().nonnegative(),
+      role_weights: z.object({ benched: z.number().min(0).max(1), competition: z.number().min(0).max(1) }),
+      min_sources: z.number().int().min(1),
+    })
+    .optional(),
   clamp: z.tuple([z.number(), z.number()]),
   _note: z.string().optional(),
 });
@@ -270,7 +282,7 @@ function fullNames(rows: FactRow[], also: FactRow[] = []): void {
 }
 
 /** The outlet behind a fact that names no channel: its site, else the URL itself. */
-function siteOf(url: string | null | undefined): string {
+export function siteOf(url: string | null | undefined): string {
   if (!url) return '?';
   try {
     return new URL(url).hostname.replace(/^www\./, '');

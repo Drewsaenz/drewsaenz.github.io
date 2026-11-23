@@ -266,6 +266,33 @@ Drew's call (`DEFAULT_FOCUS_MODELS` in `src/config.ts`, model pick in `src/board
 two differ for 2 of the teams playing: Washington (a bare "Davis" now counts for Elinneus Davis) and Mississippi
 State (Amaree Williams no longer merged with Ayden Williams).
 
+## Model v5.3 (`model_version = 'v5.3-fused'`, approved by Drew 2026-11-23)
+
+v5.2's formula, coefficients and fresh-news rule, with the injury layer read through `config/model-v4.3.json`
+(`v4.3-avail`: v4.2 plus a `depth_chart` block; an input to v5.3 only, not logged as its own model). It adds one
+thing: a starting QB who lost the job without being hurt (`src/model/v43.ts`).
+
+- Why: week 12 Oklahoma-Texas A&M. About ten outlets had Brady Hart starting over Marcel Reed. The SEC report
+  listed Reed "Available" (he was healthy), which the v4.1 layering treats as the whole truth, and the extractor
+  had filed the benching under out, unknown, questionable or available by turns. v5.1 and v5.2 saw nothing.
+- Facts carry `role` (`starter | benched | competition | none`): a coach's lineup decision, separate from health.
+  New column on `news_facts`; the extraction prompt fills it and leaves the status wording alone, so v2 to v5.2
+  read the same inputs as before. Official report facts are `none`. Facts stored before 2026-11-23 were tagged by
+  `npm run news:role` (QB facts only, a short classification call over `detail`, like `news:gameref`).
+- For the team's starting QB (season pass-attempt leader), each outlet's latest word since the team's previous
+  game is one vote: benched (he is benched, or another QB is named the starter), competition (the coach has not
+  decided), or starter. A vote counts once 2 outlets cast it; the most recently corroborated vote wins, so two
+  outlets saying he starts clear a benching. One benched plus one competition outlet is a competition. Recaps
+  (`game_ref` previous) and confidence under 0.5 do not vote. The official report never enters.
+- Points: benched 3 (half the 6 for an injured starter), competition 1.5. Priors. The QB item is the larger of
+  the health penalty and this; they do not stack.
+- The fresh-news rule still applies: a starter who threw no pass in the team's previous game is dropped as
+  priced. So v5.3 moves in the first week of a benching, not the second.
+- Known gap, not addressed: "starter" is still the season attempt leader, so a new starter getting hurt counts
+  for nothing in any version.
+- `npm run v4:check -- --v43` previews the layer. Logged on every snapshot beside v5.1 and v5.2; v5.1 is still
+  the main model. The board's QB flag (`qbFlags`) is unchanged because the report's News check is scored off it.
+
 ## Spread model m1 (`src/model/m1.ts`, `model_version = 'm1-margin'`, approved by Drew 2026-11-22)
 
 A point-spread model trained on final scoring margins (not a win probability turned into points). Rows go to

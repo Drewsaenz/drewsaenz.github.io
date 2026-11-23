@@ -6,6 +6,7 @@
 import type { Db } from '../db';
 import type { CfbdClient } from '../sources/cfbd';
 import type { Starter } from './v2';
+import { applyDepthChart, depthChart } from './v43';
 import { buildImportance, coachChanges, latestStatuses, nameMatcher, teamAdjustment, weeksMissed, type ImportanceIndex, type ModelV4Config, type StatRow, type TeamAdjustment } from './v4';
 
 export interface V4Inputs {
@@ -25,7 +26,8 @@ export async function loadV4Inputs(cfbd: CfbdClient, cfg: ModelV4Config, season:
 export function adjustmentFor(db: Db, cfg: ModelV4Config, inputs: V4Inputs, starters: Map<string, Starter>, team: string, atIso: string): TeamAdjustment {
   const starter = starters.get(team);
   const missed = starter ? weeksMissed(inputs.weekly, team, starter.player, nameMatcher(cfg)) : 0;
-  return teamAdjustment(cfg, team, latestStatuses(db, cfg, team, atIso), inputs.importance, starter, missed, coachChanges(db, cfg, team, atIso));
+  const adj = teamAdjustment(cfg, team, latestStatuses(db, cfg, team, atIso), inputs.importance, starter, missed, coachChanges(db, cfg, team, atIso));
+  return cfg.depth_chart ? applyDepthChart(cfg, adj, depthChart(db, cfg, team, starter, atIso)) : adj;
 }
 
 /** "Texas -3.4 (Smothers RB out 1.4, Simmons EDGE questionable 0.4, ...)" for logs. */

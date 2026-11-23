@@ -17,6 +17,7 @@ export function openDb(file?: string): Db {
   const factCols = new Set((db.prepare('PRAGMA table_info(news_facts)').all() as { name: string }[]).map((c) => c.name));
   if (!factCols.has('player_raw')) db.exec('ALTER TABLE news_facts ADD COLUMN player_raw TEXT');
   if (!factCols.has('game_ref')) db.exec('ALTER TABLE news_facts ADD COLUMN game_ref TEXT');
+  if (!factCols.has('role')) db.exec('ALTER TABLE news_facts ADD COLUMN role TEXT');
   return db;
 }
 

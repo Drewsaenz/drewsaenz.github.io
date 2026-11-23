@@ -1,0 +1,34 @@
+{
+  "model_version": "v5.3-fused",
+  "base_model_version": "v1-blend",
+  "injury_model_version": "v4.3-avail",
+  "fitted_at": "2026-11-09T20:25:53.148Z",
+  "temper": 1.2433,
+  "coefs": {
+    "a0": 0.0013535687240094289,
+    "a": 0.8102418469175958,
+    "b": 0.13657109169760284,
+    "c": 0.14105
+  },
+  "priors": {
+    "a0": 0,
+    "a": 0.8401,
+    "b": 0.1599,
+    "c": 0.14105
+  },
+  "prior_weight": 40,
+  "min_injury_rows": 100,
+  "fade": {
+    "full_hours": 72,
+    "zero_hours": 0
+  },
+  "clamp": [
+    0.02,
+    0.98
+  ],
+  "_note": "v5.3-fused = v5.2-fused's formula, coefficients and fresh-news rule, with the injury layer read through config/model-v4.3.json (v4.3-avail): v4.2 plus a benched or undecided starting quarterback, which an official 'Available' cannot clear. A QB who already sat out the team's previous game is still dropped as priced, so this counts in the first week of a benching. Logged beside v5.1 and v5.2; v5.1 stays the main model until Drew switches. Approved by Drew 2026-11-23. Any change after v5.3 rows exist is a new model_version.",
+  "fit_summary": {
+    "copied_from": "v5.1-fused",
+    "note": "Same coefficients as v5 and v5.1; c was held at its prior in that fit, so nothing in it depends on how names were matched."
+  }
+}
