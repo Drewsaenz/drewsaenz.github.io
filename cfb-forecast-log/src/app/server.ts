@@ -15,6 +15,8 @@ import { DATA_DIR, REPORTS_DIR } from '../paths';
 import { currentBoardWeek, gameDetail, gamesForWeek, health, picksView, recentNews } from './data';
 import { APP_HTML } from './page';
 
+const JOBS_LOG = path.join(DATA_DIR, 'jobs.log');
+
 const PROJECT = path.resolve(__dirname, '..', '..');
 const PORT = Number(process.env.APP_PORT ?? 3300);
 
@@ -41,6 +43,12 @@ function runAction(name: string): void {
     const [cmd, args] = action.steps[i];
     state.output += `$ ${cmd} ${args.join(' ')}\n`;
     const child = spawn(cmd, args, { cwd: PROJECT, env: process.env });
+    // Mark Desk runs in data/jobs.log; the job itself appends its start/done lines (recordRun in src/log.ts).
+    try {
+      fs.appendFileSync(JOBS_LOG, `${new Date().toISOString()} INFO  [desk] ${name}: ${cmd} ${args.join(' ')}\n`);
+    } catch {
+      /* the page still shows the output */
+    }
     child.stdout.on('data', (d) => (state.output += d.toString()));
     child.stderr.on('data', (d) => (state.output += d.toString()));
     child.on('error', (e) => {
