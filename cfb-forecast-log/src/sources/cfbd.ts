@@ -111,8 +111,8 @@ export class CfbdClient {
    * be reached at all, falls back to the last cached copy (up to STALE_MAX_HOURS
    * old) with a warning. Used only for season player stats and rosters, where a
    * day-old copy is fine; schedules, lines and ratings never fall back. With
-   * `'slow'`, only the longer timeout applies (the whole-season schedule: ~3,700
-   * games, which timed out at 30s on 2026-11-22 and failed resolve). A response
+   * `'slow'`, only the longer timeout applies (the whole-season schedule and the ratings: ~3,700
+   * games timed out at 30s on 2026-11-22 and failed resolve; /ratings/sp did the same on 2026-11-24 and failed ratings). A response
    * that arrives but fails validation still throws (hard rule 5).
    */
   private async get<T>(endpoint: string, params: Record<string, string | number>, schema: z.ZodType<T>, ttlHours: number, big: boolean | 'slow' = false): Promise<T> {
@@ -186,14 +186,14 @@ export class CfbdClient {
    */
   async sp(season: number, historical = false, fresh = false): Promise<TeamRatings> {
     const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
-    const raw = await this.get('/ratings/sp', { year: season }, CfbdSp, ttl);
+    const raw = await this.get('/ratings/sp', { year: season }, CfbdSp, ttl, 'slow');
     return toMap(raw.filter((r) => r.team !== 'nationalAverages').map((r) => [r.team, r.rating]));
   }
 
   /** SP+ offense and defense ratings (the same /ratings/sp call as sp(), so no extra budget when cached). */
   async spUnits(season: number, historical = false): Promise<SpUnits> {
     const ttl = historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
-    const raw = await this.get('/ratings/sp', { year: season }, CfbdSpUnits, ttl);
+    const raw = await this.get('/ratings/sp', { year: season }, CfbdSpUnits, ttl, 'slow');
     const avgRow = raw.find((r) => r.team === 'nationalAverages');
     const avg = avgRow?.offense?.rating;
     if (typeof avg !== 'number') throw new Error(`CFBD /ratings/sp ${season} has no nationalAverages offense rating`);
@@ -208,7 +208,7 @@ export class CfbdClient {
 
   async fpi(season: number, historical = false, fresh = false): Promise<TeamRatings> {
     const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
-    const raw = await this.get('/ratings/fpi', { year: season }, CfbdFpi, ttl);
+    const raw = await this.get('/ratings/fpi', { year: season }, CfbdFpi, ttl, 'slow');
     return toMap(raw.map((r) => [r.team, r.fpi]));
   }
 
@@ -247,7 +247,7 @@ export class CfbdClient {
     const ttl = fresh ? 0 : historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.ratings;
     const params: Record<string, string | number> = { year: season };
     if (week !== undefined) params.week = week;
-    const raw = await this.get('/ratings/elo', params, CfbdElo, ttl);
+    const raw = await this.get('/ratings/elo', params, CfbdElo, ttl, 'slow');
     return toMap(raw.map((r) => [r.team, r.elo]));
   }
 }
