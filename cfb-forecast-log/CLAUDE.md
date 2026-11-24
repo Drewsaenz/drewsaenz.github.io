@@ -354,7 +354,7 @@ cleaner read on whether Friday news is priced. One run per week: reruns are no-o
 
 | Job        | When (America/Chicago)          | Does |
 |------------|----------------------------------|------|
-| `ratings`  | Tue 06:00                        | Pull SP+, Elo, FPI from CFBD; scrape FEI; upsert `ratings` |
+| `ratings`  | Tue 06:00, re-pulled Tue 12:00 and Wed 06:00 | Pull SP+, Elo, FPI from CFBD; scrape FEI (same-day reruns read the cached page); upsert `ratings`. The re-pulls catch sources that post late (2026-11-24: SP+ had not updated by Tuesday's snapshot) and feed the report, Friday and pregame snapshots; Tuesday rows keep what they logged |
 | `snapshot:tuesday` | Tue 07:00                | Pull games + lines + Kalshi markets for the week; write one `forecasts` row per market, `snapshot_kind='tuesday'` |
 | `snapshot:friday`  | Fri 19:40                | Same markets as Tuesday that have not kicked off, `snapshot_kind='friday'` |
 | `snapshot:pregame` | every 30 min Thu–Sat     | For games kicking off in the next 90 min with no `pregame` row yet, write a `pregame` row |
