@@ -112,10 +112,12 @@ export class CfbdClient {
    * old) with a warning. Used only for season player stats and rosters, where a
    * day-old copy is fine; schedules, lines and ratings never fall back. With
    * `'slow'`, only the longer timeout applies (the whole-season schedule and the ratings: ~3,700
-   * games timed out at 30s on 2026-11-22 and failed resolve; /ratings/sp did the same on 2026-11-24 and failed ratings). A response
+   * games timed out at 30s on 2026-11-22 and failed resolve; /ratings/sp did the same on 2026-11-24 and failed ratings).
+   * `staleMaxHours` lets one caller accept a cached copy up to that age when CFBD fails (the pregame
+   * schedule check; Drew 2026-11-25). A response
    * that arrives but fails validation still throws (hard rule 5).
    */
-  private async get<T>(endpoint: string, params: Record<string, string | number>, schema: z.ZodType<T>, ttlHours: number, big: boolean | 'slow' = false): Promise<T> {
+  private async get<T>(endpoint: string, params: Record<string, string | number>, schema: z.ZodType<T>, ttlHours: number, big: boolean | 'slow' = false, staleMaxHours = 0): Promise<T> {
     const qs = Object.entries(params)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
@@ -139,7 +141,8 @@ export class CfbdClient {
       body = await getJson(url, { headers: { Authorization: `Bearer ${this.apiKey}` }, ...(big ? { timeoutMs: BIG_TIMEOUT_MS } : {}) });
     } catch (err) {
       const ageH = cached ? (Date.now() - Date.parse(cached.fetched_at)) / 3_600_000 : Infinity;
-      if (big !== true || !cached || ageH > STALE_MAX_HOURS) throw err;
+      const maxH = big === true ? STALE_MAX_HOURS : staleMaxHours;
+      if (!maxH || !cached || ageH > maxH) throw err;
       log.warn(`CFBD ${endpoint} ${qs} unreachable (${(err as Error).message}); using the cached copy from ${ageH.toFixed(0)}h ago`);
       return schema.parse(camelKeys(cached.body));
     }
@@ -149,9 +152,9 @@ export class CfbdClient {
   }
 
   /** Whole-season regular-season schedule (one call; cached). */
-  async games(season: number, opts: { historical?: boolean } = {}): Promise<GameRow[]> {
+  async games(season: number, opts: { historical?: boolean; staleMaxHours?: number } = {}): Promise<GameRow[]> {
     const ttl = opts.historical ? this.cfg.cache_ttl_hours.historical : this.cfg.cache_ttl_hours.games;
-    const raw = await this.get('/games', { year: season, seasonType: this.cfg.season_type }, CfbdGames, ttl, 'slow');
+    const raw = await this.get('/games', { year: season, seasonType: this.cfg.season_type }, CfbdGames, ttl, 'slow', opts.staleMaxHours ?? 0);
     return raw.map((g) => ({
       game_id: g.id,
       season: g.season,

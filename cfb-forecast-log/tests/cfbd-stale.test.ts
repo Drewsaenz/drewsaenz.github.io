@@ -24,3 +24,17 @@ test('big CFBD responses fall back to an expired cached copy when CFBD is unreac
   await assert.rejects(() => client.games(2026)); // schedules never fall back
   fs.rmSync(dir, { recursive: true });
 });
+
+test('the pregame schedule check may use a cached schedule up to the age it allows, no older', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfbd-'));
+  const cfg = { ...loadCfbdConfig(), base_url: 'http://127.0.0.1:9' };
+  const client = new CfbdClient('k', cfg, dir);
+  const url = `${cfg.base_url}/games?seasonType=regular&year=2026`;
+  const g = { id: 1, season: 2026, week: 13, seasonType: 'regular', startDate: '2026-11-28T20:00:00.000Z', homeTeam: 'Texas A&M', awayTeam: 'Texas', neutralSite: false, completed: false, homePoints: null, awayPoints: null };
+  seed(dir, url, [g], 3);
+  const games = await client.games(2026, { staleMaxHours: 24 });
+  assert.deepEqual(games.map((x) => x.game_id), [1]);
+  seed(dir, url, [g], 30);
+  await assert.rejects(() => client.games(2026, { staleMaxHours: 24 }));
+  fs.rmSync(dir, { recursive: true });
+});

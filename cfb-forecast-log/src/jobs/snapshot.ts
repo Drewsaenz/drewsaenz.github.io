@@ -28,6 +28,7 @@ import { seasonContext } from './context';
 import { saveStarters } from '../news';
 
 const PREGAME_WINDOW_MS = 90 * 60_000;
+const PREGAME_STALE_SCHEDULE_HOURS = 24;
 
 const kind = process.argv[2] as SnapshotKind;
 if (!SNAPSHOT_KINDS.includes(kind)) {
@@ -89,7 +90,9 @@ runJob(`snapshot:${kind}`, async () => {
   if (!v53) log.warn(`config/model-v5.3.json has no coefficients; no ${v53cfg.model_version} rows this snapshot.`);
   else if (v53.injury_model_version !== v43.model_version) throw new Error(`model-v5.3.json expects injury model ${v53.injury_model_version} but model-v4.3.json is ${v43.model_version}`);
   const now = new Date();
-  const { cfbd, season, week, games } = await seasonContext(now);
+  // Pregame only: if CFBD is down, decide "anything kicking off soon?" from the last cached schedule
+  // (up to 24 h old) instead of failing. A game that is due still needs CFBD's lines, so that run fails loud.
+  const { cfbd, season, week, games } = await seasonContext(now, kind === 'pregame' ? { staleScheduleHours: PREGAME_STALE_SCHEDULE_HOURS } : {});
   const aliases = loadAliases();
 
   const db = openDb();

@@ -367,6 +367,10 @@ Reliability notes (2026-11-12):
 - `ratings` fetches SP+, Elo and FPI fresh, never from the cache, and warns when a
   source is identical to the week before (week 10 ran on week 9's SP+). The
   tracker shows the same warning.
+- Pregame only (Drew, 2026-11-25): when CFBD fails, the "anything kicking off soon?" check uses the
+  cached schedule if it is under 24 h old, with a warning, instead of failing (22 transient pregame failures
+  by week 13, none of which missed a game). A game that is due still needs CFBD's lines, so that run fails
+  loud as before. Every other job and schedule read still fails on a CFBD error.
 - A Kalshi market dated after the last scheduled game (bowls, playoff) is skipped
   with a warning. Any other unmapped market still fails the snapshot.
 - The tracker warns when `news:extract` or `news:availability` fails three times
